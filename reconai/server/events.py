@@ -1,0 +1,77 @@
+from __future__ import annotations
+
+import asyncio
+import time
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+
+
+@dataclass
+class RunState:
+    run_id: str
+    target: str
+    started_at: float = field(default_factory=time.time)
+    events: list[dict] = field(default_factory=list)
+    subscribers: list[asyncio.Queue] = field(default_factory=list)
+    done: bool = False
+    error: bool = False
+
+
+class RunRegistry:
+    """Tracks in-progress/completed scan runs and fans out their events to any
+    number of SSE subscribers, including ones that connect after the run started
+    (they get replayed the events-so-far first)."""
+
+    def __init__(self) -> None:
+        self._runs: dict[str, RunState] = {}
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+
+    def create(self, run_id: str, target: str) -> RunState:
+        state = RunState(run_id=run_id, target=target)
+        self._runs[run_id] = state
+        return state
+
+    def get(self, run_id: str) -> RunState | None:
+        return self._runs.get(run_id)
+
+    def list_runs(self) -> list[RunState]:
+        return sorted(self._runs.values(), key=lambda s: s.started_at, reverse=True)
+
+    def publish(self, run_id: str, event: dict) -> None:
+        """Thread-safe: call this from the pipeline's worker thread."""
+        state = self._runs.get(run_id)
+        if state is None:
+            return
+        state.events.append(event)
+        if event.get("type") in ("pipeline_end", "pipeline_error"):
+            state.done = True
+        if event.get("type") == "pipeline_error":
+            state.error = True
+        for queue in list(state.subscribers):
+            if self._loop is not None:
+                self._loop.call_soon_threadsafe(queue.put_nowait, event)
+            else:
+                queue.put_nowait(event)
+
+    async def subscribe(self, run_id: str) -> AsyncIterator[dict]:
+        state = self._runs.get(run_id)
+        if state is None:
+            return
+        queue: asyncio.Queue = asyncio.Queue()
+        for past_event in state.events:
+            queue.put_nowait(past_event)
+        state.subscribers.append(queue)
+        try:
+            while True:
+                event = await queue.get()
+                yield event
+                if event.get("type") in ("pipeline_end", "pipeline_error"):
+                    break
+        finally:
+            state.subscribers.remove(queue)
+
+
+registry = RunRegistry()

@@ -4,3 +4,4 @@ __pycache__/
 results/
 *.pdf
 .DS_Store
+.pytest_cache/
