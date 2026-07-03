@@ -202,8 +202,12 @@
 
   /* ---- stats strip ---- */
   .stats { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }
-  .stat { flex: 1; min-width: 130px; }
-  .stat .val { font-size: 26px; font-weight: 700; color: var(--cyan); text-shadow: var(--glow-cyan); }
+  .stat { flex: 1; min-width: 130px; max-width: 100%; overflow: hidden; }
+  .stat.target { flex: 2 1 220px; }
+  .stat .val {
+    font-size: 26px; font-weight: 700; color: var(--cyan); text-shadow: var(--glow-cyan);
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
   .stat .lbl { font-size: 10.5px; letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase; margin-top: 2px; }
 
   .progress-outer {
@@ -534,8 +538,6 @@
       </div>
     </div>
     <div class="toggles">
-      <label class="toggle"><input type="checkbox" id="dryRun" /> dry-run (simulate only)</label>
-      <label class="toggle"><input type="checkbox" id="mock" /> mock (canned sample data)</label>
       <label class="toggle"><input type="checkbox" id="nmapFull" /> full port range</label>
     </div>
     <div class="authorize">
@@ -548,7 +550,7 @@
   <div id="scanPanel">
     <div class="panel">
       <div class="stats">
-        <div class="stat"><div class="val" id="statTarget">—</div><div class="lbl">Target</div></div>
+        <div class="stat target"><div class="val" id="statTarget">—</div><div class="lbl">Target</div></div>
         <div class="stat"><div class="val" id="statElapsed">00:00</div><div class="lbl">Elapsed</div></div>
         <div class="stat"><div class="val" id="statProgress">0/18</div><div class="lbl">Stages</div></div>
       </div>
@@ -912,6 +914,7 @@ function attachToRun(runId, target, startedAtMs, { reconnecting = false } = {}) 
   showView("scan");
   $("terminal").innerHTML = "";
   $("statTarget").textContent = target;
+  $("statTarget").title = target;
   $("connBadge").textContent = "● LIVE";
   buildPhases();
   updateProgress();
@@ -939,8 +942,6 @@ async function launchScan() {
   const body = {
     target,
     llm_backend: $("llmBackend").value,
-    dry_run: $("dryRun").checked,
-    mock: $("mock").checked,
     nmap_full: $("nmapFull").checked,
     wordlist_size: $("wordlistSize").value,
     authorized,
@@ -987,11 +988,9 @@ buildPhases();
     if (active) { attachToRun(active.run_id, active.target, active.started_at * 1000, { reconnecting: true }); return; }
   } catch (e) { /* server has no runs yet, or /runs unreachable -- fall through to idle form */ }
 
-  // Deep-link support: ?target=X&authorized=1&autostart=1[&dry_run=1&mock=1&llm=claude]
+  // Deep-link support: ?target=X&authorized=1&autostart=1[&llm=claude]
   if (p.get("target")) $("target").value = p.get("target");
   if (p.get("authorized") === "1") $("authorized").checked = true;
-  if (p.get("dry_run") === "1") $("dryRun").checked = true;
-  if (p.get("mock") === "1") $("mock").checked = true;
   if (p.get("llm")) $("llmBackend").value = p.get("llm");
   if (p.get("autostart") === "1") { launchScan(); return; }
   showView("form");
