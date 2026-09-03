@@ -9,6 +9,21 @@ def test_sanitize_target_strips_special_chars():
     assert results.sanitize_target("https://example.com:8080/path") == "https___example.com_8080_path"
 
 
+def test_sanitize_target_neutralizes_path_traversal():
+    # "." and ".." both survive the char-allowlist unchanged (both are
+    # allowed chars) and, on their own, are complete special path
+    # components -- Path("results") / ".." resolves to results/'s parent,
+    # escaping the intended sandbox entirely.
+    assert results.sanitize_target("..") == "_"
+    assert results.sanitize_target(".") == "_"
+    assert results.sanitize_target("") == "_"
+
+
+def test_make_run_dir_with_dotdot_target_stays_inside_base(tmp_path):
+    run_dir = results.make_run_dir("..", base=tmp_path)
+    assert tmp_path in run_dir.parents
+
+
 def test_make_run_dir_creates_nested_path(tmp_path):
     run_dir = results.make_run_dir("example.com", base=tmp_path)
     assert run_dir.exists()
@@ -44,6 +59,25 @@ def test_write_tool_output_skipped(tmp_path):
     content = out.read_text()
     assert "[SKIPPED]" in content
     assert "sudo apt install nmap" in content
+
+
+def test_write_ai_summary(tmp_path):
+    path = results.write_ai_summary(tmp_path, "Narrative summary text.",
+                                     ["httpx: skipped -- no subdomains discovered."])
+    assert path.exists()
+    import json
+    data = json.loads(path.read_text())
+    assert data == {
+        "ai_summary": "Narrative summary text.",
+        "skip_note": "httpx: skipped -- no subdomains discovered.",
+    }
+
+
+def test_write_ai_summary_with_no_skip_notes(tmp_path):
+    path = results.write_ai_summary(tmp_path, "Narrative summary text.", [])
+    import json
+    data = json.loads(path.read_text())
+    assert data["skip_note"] is None
 
 
 def test_write_manifest(tmp_path):

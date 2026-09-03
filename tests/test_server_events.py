@@ -1,5 +1,6 @@
 import asyncio
 
+from reconai.server import events
 from reconai.server.events import RunRegistry
 
 
@@ -40,3 +41,32 @@ def test_publish_marks_run_done_on_pipeline_end():
 def test_publish_to_unknown_run_is_a_noop():
     registry = RunRegistry()
     registry.publish("does-not-exist", {"type": "stage_start"})  # must not raise
+
+
+def test_registry_evicts_oldest_completed_runs_over_capacity(monkeypatch):
+    # A long-lived dashboard server can run for many hours across many scans
+    # -- verified in practice -- so this must not grow without bound.
+    monkeypatch.setattr(events, "_MAX_TRACKED_RUNS", 3)
+    registry = RunRegistry()
+    for i in range(3):
+        registry.create(f"run{i}", "example.com")
+        registry.publish(f"run{i}", {"type": "pipeline_end", "run_dir": "x"})
+
+    registry.create("run3", "example.com")
+    registry.publish("run3", {"type": "pipeline_end", "run_dir": "x"})
+
+    assert registry.get("run0") is None  # oldest completed run evicted
+    assert registry.get("run3") is not None
+    assert len(registry.list_runs()) == 3
+
+
+def test_registry_never_evicts_an_in_progress_run(monkeypatch):
+    monkeypatch.setattr(events, "_MAX_TRACKED_RUNS", 2)
+    registry = RunRegistry()
+    registry.create("still-running", "example.com")  # never published as done
+
+    for i in range(5):
+        registry.create(f"run{i}", "example.com")
+        registry.publish(f"run{i}", {"type": "pipeline_end", "run_dir": "x"})
+
+    assert registry.get("still-running") is not None

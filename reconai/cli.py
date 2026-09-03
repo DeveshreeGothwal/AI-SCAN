@@ -31,6 +31,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
                               "medium=dirbuster (~220k words, thorough), large=SecLists raft-large "
                               "(needs 'sudo apt install seclists'). Default: small.")
     parser.add_argument("--yes", action="store_true", help="Skip the interactive authorization confirmation prompt.")
+    parser.add_argument("--proxy", default=None,
+                         help="Route scan traffic through this proxy (e.g. socks5://127.0.0.1:9050 or "
+                              "http://127.0.0.1:8080). Off by default -- direct connections. See README "
+                              "for per-tool coverage (a couple of Go-based tools can't be proxied and are "
+                              "skipped instead of run unprotected).")
+    parser.add_argument("--tor", action="store_true",
+                         help="Shorthand for --proxy socks5://127.0.0.1:9050 (a local Tor daemon). "
+                              "Free, no signup -- `sudo apt install tor && sudo systemctl start tor`.")
+    parser.add_argument("--validate-secrets", action="store_true",
+                         help="For Stripe/Slack secrets found by secret_scan, make one read-only "
+                              "confirmatory call to the credential's own provider to check if it's "
+                              "still live (mirrors github_secrets' use of trufflehog --only-verified). "
+                              "Off by default -- does not post to Slack or touch Stripe account data.")
     parser.add_argument("--serve", action="store_true",
                          help="Start the live web dashboard instead of running a single scan.")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host for --serve (default: 127.0.0.1, localhost-only).")
@@ -78,4 +91,6 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[+] Summary: {ctx.summary_path}")
     if ctx.pdf_path:
         print(f"[+] PDF report: {ctx.pdf_path}")
+    elif ctx.pdf_error:
+        print(f"[!] PDF export failed (scan itself completed fine): {ctx.pdf_error}", file=sys.stderr)
     return 0

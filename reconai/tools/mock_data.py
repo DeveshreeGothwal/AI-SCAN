@@ -92,4 +92,123 @@ MOCK_OUTPUTS: dict[str, str] = {
         "[Not Vulnerable] www.example.com\n"
         "[VULNERABLE] old-staging.example.com (CNAME: old-staging.herokudns.com, Provider: Heroku)\n"
     ),
+    "waybackurls": (
+        "https://example.com/product.php?id=1\n"
+        "https://example.com/search?q=test&category=all\n"
+        "https://example.com/redirect?url=https://example.com/home\n"
+        "https://example.com/about\n"
+    ),
+    "injection_probe": (
+        "Probed 3 parameterized URL(s), 4 parameter(s) tested.\n\n"
+        "[SQL Injection] param 'id' on https://example.com/product.php?id=1 -- "
+        "SQL error signature after appending a single quote\n"
+        "[Reflected XSS] param 'q' on https://example.com/search?q=shoes -- "
+        "injected marker reflected unescaped in response\n"
+        "[Open Redirect] param 'url' on https://example.com/redirect?url=https://example.com/home -- "
+        "Location header points at an attacker-controlled URL\n\n"
+        "[Informational] parameter name(s) suggestive of SSRF -- not auto-tested "
+        "(safely confirming SSRF needs an out-of-band callback listener, out of scope "
+        "here), flagged for manual review:\n"
+        "param 'url' on https://example.com/redirect?url=https://example.com/home\n"
+    ),
+    "cors_scan": (
+        "Tested 4 Origin header variant(s) against the base URL.\n\n"
+        "[CORS Misconfiguration] Origin 'https://reconai-cors-test.invalid' reflected verbatim "
+        "in Access-Control-Allow-Origin -- credentials also allowed, so session-riding is possible\n"
+    ),
+    "security_headers": (
+        "[Clickjacking] no X-Frame-Options header and no CSP frame-ancestors directive -- "
+        "the page can be embedded in a hostile <iframe>\n"
+        "[Missing Header] X-Content-Type-Options: nosniff not set -- browsers may MIME-sniff responses\n"
+        "[Cookie Misconfiguration] cookie 'session' missing: httponly, samesite\n"
+    ),
+    "graphql_probe": (
+        "Probed 6 candidate GraphQL endpoint(s).\n\n"
+        "[GraphQL Introspection Enabled] https://example.com/graphql -- full schema is "
+        "queryable (types, fields, mutations)\n"
+    ),
+    "auth_audit": (
+        "Probed 12 candidate authentication endpoint(s).\n\n"
+        "[Cleartext Credential Submission] http://example.com/login -- password form served over "
+        "plain HTTP; credentials are sent unencrypted and can be intercepted by anyone on the "
+        "network path\n"
+        "[Weak Password Policy] http://example.com/register -- password field caps input at "
+        "8 characters, well below a reasonable minimum\n\n"
+        "[Informational] account lockout / rate-limiting was not tested -- doing so would require "
+        "repeated login attempts against a real account, which this tool deliberately never does. "
+        "Verify this manually/internally.\n"
+    ),
+    "privacy_scan": (
+        "[Tracking Without Consent Signal] tracker script(s) detected (googletagmanager.com, "
+        "fbq() (+1 more)) with no cookie-consent/CMP marker found in the same response -- "
+        "trackers may be loading before any consent is given\n"
+        "[Weak Referrer Policy] Referrer-Policy header is missing -- the full URL (which can "
+        "contain sensitive query parameters) may leak to third parties via the Referer header on "
+        "outbound links\n"
+    ),
+    "link_safety": (
+        "Checked https://paypa1-secure-login.xn--80ak6aa92e.zip/verify\n\n"
+        "Verdict: HIGH RISK\n\n"
+        "[Punycode/Homograph Domain] hostname contains punycode-encoded characters -- often used "
+        "to visually impersonate a trusted domain with lookalike characters\n"
+        "[Possible Brand Impersonation] hostname contains 'paypal' but the actual domain is not "
+        "paypal's real domain -- a classic phishing pattern\n"
+        "[Elevated-Risk TLD] .zip is disproportionately used in abuse campaigns -- not proof of "
+        "malice on its own, just an elevated-risk signal\n"
+        "[Newly Registered Domain] registered 4 day(s) ago -- freshly-registered domains are "
+        "disproportionately used in phishing/scam campaigns\n"
+    ),
+    "sqlmap": (
+        "[INFO] testing connection to the target URL\n"
+        "[INFO] testing if the target URL content is stable\n"
+        "[WARNING] heuristic (basic) test shows that GET parameter 'id' might be injectable\n"
+        "[INFO] testing 'AND boolean-based blind - WHERE or HAVING clause'\n"
+        "sqlmap identified the following injection point(s) with a total of 32 HTTP(s) requests:\n"
+        "---\n"
+        "Parameter: id (GET)\n"
+        "    Type: boolean-based blind\n"
+        "    Title: AND boolean-based blind - WHERE or HAVING clause\n"
+        "    Payload: id=1 AND 1=1\n"
+        "---\n"
+        "[INFO] the back-end DBMS is MySQL\n"
+    ),
+    "dns_axfr": (
+        "$ dig NS example.com +short\n"
+        "a.iana-servers.net.\nb.iana-servers.net.\n\n"
+        "$ dig @a.iana-servers.net example.com AXFR\n"
+        "no zone transfer (refused/failed) -- OK\n"
+    ),
+    "crtsh": ("www.example.com\napi.example.com\nold-vpn.example.com\n"),
+    "bucket_enum": (
+        "Checked 75 bucket-name candidate(s) across S3/GCS/Azure.\n\n"
+        "[S3] https://example-backup.s3.amazonaws.com/ -- PUBLIC (listable)\n"
+        "[GCS] https://storage.googleapis.com/example-assets/ -- exists, access denied (private)\n"
+    ),
+    "secret_scan": (
+        "Scanned 2 JS file(s) and 6 common config path(s).\n\n"
+        "[AWS Access Key] found in https://example.com/static/vendor.bundle.js: AKIAIOSFODNN7...\n"
+        "[Exposed config file] https://example.com/.env is accessible and looks like real config content\n"
+    ),
+    "cve_correlate": (
+        "Correlating 2 detected product/version pair(s) against the NVD (nvd.nist.gov).\n"
+        "Heuristic keyword match, not a strict CPE match -- verify manually before reporting.\n\n"
+        "### nginx 1.22.1\n"
+        "  - CVE-2022-41741: Buffer overread in nginx MP4 module...\n\n"
+        "### OpenSSH 8.9p1\n"
+        "  (no CVE matches found, or the NVD query failed)\n"
+    ),
+    "github_secrets": (
+        "GitHub org guess: 'example'. Scanned 2 repo(s) (shallow clone, latest commit only).\n\n"
+        "[example-web] no verified secrets found\n\n"
+        "[example-infra] {\"SourceMetadata\":{\"Data\":{\"Filesystem\":{\"file\":\"deploy.sh\"}}},"
+        "\"DetectorName\":\"AWS\",\"Verified\":true}\n"
+    ),
+    "google_dorks": (
+        "Generated 13 Google dork queries for manual review.\n"
+        "Not executed automatically -- automating Google searches risks CAPTCHA/ToS issues, "
+        "especially from a Tor exit node. Open these yourself in a browser.\n\n"
+        "### Directory listings\n"
+        "site:example.com intitle:\"index of\"\n"
+        "https://www.google.com/search?q=site%3Aexample.com+intitle%3A%22index+of%22\n"
+    ),
 }

@@ -23,7 +23,7 @@ def _strip_ansi(text: str) -> str:
     return _ANSI_RE.sub("", text)
 
 
-def run(subdomains: list[str], dry_run: bool = False, mock: bool = False) -> ToolResult:
+def run(subdomains: list[str], dry_run: bool = False, mock: bool = False, proxy: str | None = None) -> ToolResult:
     """Check discovered subdomains for takeover-able dangling CNAMEs using subjack."""
     if mock:
         cmd = [_SUBJACK_BIN, "-w", "<subdomains>", *_FLAGS]
@@ -31,14 +31,17 @@ def run(subdomains: list[str], dry_run: bool = False, mock: bool = False) -> Too
 
     if dry_run:
         cmd = [_SUBJACK_BIN, "-w", "<subdomains>", *_FLAGS]
-        return run_command(NAME, cmd, timeout=120, dry_run=True)
+        return run_command(NAME, cmd, timeout=120, dry_run=True, proxy=proxy)
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
         f.write("\n".join(subdomains))
         list_path = f.name
     try:
         cmd = [_SUBJACK_BIN, "-w", list_path, *_FLAGS]
-        result = run_command(NAME, cmd, timeout=120, dry_run=False)
+        # subjack is one of the two binaries (with getJS) verified to honor
+        # neither env-var proxying nor proxychains4 -- run_command() skips it
+        # outright when a proxy is requested. See base.PROXY_UNSUPPORTED_BINARIES.
+        result = run_command(NAME, cmd, timeout=120, dry_run=False, proxy=proxy)
         result.stdout = _strip_ansi(result.stdout)
         result.stderr = _strip_ansi(result.stderr)
         return result

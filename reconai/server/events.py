@@ -17,10 +17,20 @@ class RunState:
     error: bool = False
 
 
+_MAX_TRACKED_RUNS = 200
+
+
 class RunRegistry:
     """Tracks in-progress/completed scan runs and fans out their events to any
     number of SSE subscribers, including ones that connect after the run started
-    (they get replayed the events-so-far first)."""
+    (they get replayed the events-so-far first).
+
+    This lives entirely in memory for the life of the server process --
+    verified in practice that a dashboard server can stay up continuously for
+    many hours across many scans, so without a cap this would grow without
+    bound. Bounded to the most recent _MAX_TRACKED_RUNS, evicting the oldest
+    *completed* runs first (an in-progress run is never evicted, however old
+    its start time, since that would break anyone still watching it)."""
 
     def __init__(self) -> None:
         self._runs: dict[str, RunState] = {}
@@ -29,7 +39,24 @@ class RunRegistry:
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
 
+    def _make_room_for_one_more(self) -> None:
+        if len(self._runs) < _MAX_TRACKED_RUNS:
+            return
+        evictable = sorted(
+            (s for s in self._runs.values() if s.done),
+            key=lambda s: s.started_at,
+        )
+        # Evict enough completed runs that inserting one more still leaves us
+        # at (not over) the cap. If every tracked run happens to be
+        # in-progress, this can still exceed the cap -- correctness for
+        # anyone actively watching a run matters more than a hard ceiling in
+        # that (very unlikely, for a single-user local tool) edge case.
+        overage = len(self._runs) - _MAX_TRACKED_RUNS + 1
+        for state in evictable[:overage]:
+            del self._runs[state.run_id]
+
     def create(self, run_id: str, target: str) -> RunState:
+        self._make_room_for_one_more()
         state = RunState(run_id=run_id, target=target)
         self._runs[run_id] = state
         return state

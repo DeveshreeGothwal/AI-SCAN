@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import re
+
 from ..llm.base import LLMBackend
 from ..tools.base import ToolResult
+from . import impact_analysis
+
+_SKIP_NOTE_RE = re.compile(r"^_(.+)_$", re.MULTILINE)
 
 _CONDENSE_MAX_CHARS = 6000
 _COMBINED_PROMPT_CHAR_CEILING = 60000  # ~15K tokens at ~4 chars/token
@@ -60,8 +65,49 @@ def _summarize_with_fallback(backend: LLMBackend, target: str, results: list[Too
     return backend.summarize(merge_prompt)
 
 
-def build(target: str, results: list[ToolResult], backend: LLMBackend, skip_note: str | None = None) -> str:
+def extract_ai_summary(markdown_text: str) -> str:
+    """Pull just the '## AI Summary' section back out of a rendered report --
+    used to serve the dashboard a small, fast payload instead of making it
+    download the entire report (which embeds every tool's full raw output,
+    verified in practice to reach tens of MB for a target with a large
+    waybackurls archive) just to show a few paragraphs of narrative text.
+    Stops at whichever of "## Potential Impact Analysis" or "## Raw Findings"
+    comes first -- the impact-analysis section is deterministic/rule-based,
+    not LLM output, so it must not get swept into what's labeled "ai_summary"."""
+    start_marker = "## AI Summary"
+    start = markdown_text.find(start_marker)
+    if start == -1:
+        return ""
+    after_start = start + len(start_marker)
+    end_positions = [
+        pos for pos in (
+            markdown_text.find("## Potential Impact Analysis", after_start),
+            markdown_text.find("## Raw Findings", after_start),
+        ) if pos != -1
+    ]
+    end = min(end_positions) if end_positions else -1
+    section = markdown_text[after_start:end] if end != -1 else markdown_text[after_start:]
+    return section.strip()
+
+
+def extract_first_skip_note(markdown_text: str) -> str | None:
+    """Mirrors the dashboard's original client-side extraction: only the
+    first skip note, used as one generic "why is this tool missing" message
+    for any tool absent from the manifest. Only needed as a fallback for
+    reports generated before write_ai_summary() started persisting this
+    directly."""
+    start = markdown_text.find("## Raw Findings")
+    if start == -1:
+        return None
+    end = markdown_text.find("### ", start)
+    raw = markdown_text[start:end] if end != -1 else markdown_text[start:]
+    match = _SKIP_NOTE_RE.search(raw)
+    return match.group(1) if match else None
+
+
+def build(target: str, results: list[ToolResult], backend: LLMBackend, skip_notes: list[str] | None = None) -> str:
     ai_summary = _summarize_with_fallback(backend, target, results)
+    impact_section = impact_analysis.render_markdown(impact_analysis.analyze(results))
 
     lines = [
         f"# Recon Summary: {target}",
@@ -72,11 +118,15 @@ def build(target: str, results: list[ToolResult], backend: LLMBackend, skip_note
         "",
         ai_summary,
         "",
+    ]
+    if impact_section:
+        lines += [impact_section, ""]
+    lines += [
         "## Raw Findings",
         "",
     ]
-    if skip_note:
-        lines += [f"_{skip_note}_", ""]
+    for note in skip_notes or []:
+        lines += [f"_{note}_", ""]
 
     for result in results:
         lines.append(f"### {result.tool}")

@@ -68,3 +68,39 @@ def test_explicit_wordlist_overrides_wordlist_size():
     )
     cfg = Config.from_args(args)
     assert cfg.gobuster_wordlist == "/custom/list.txt"
+
+
+def test_proxy_off_by_default():
+    args = build_arg_parser().parse_args(["example.com"])
+    cfg = Config.from_args(args)
+    assert cfg.proxy is None
+
+
+def test_proxy_flag_sets_config():
+    args = build_arg_parser().parse_args(["example.com", "--proxy", "socks5://127.0.0.1:9050"])
+    cfg = Config.from_args(args)
+    assert cfg.proxy == "socks5://127.0.0.1:9050"
+
+
+def test_tor_flag_is_shorthand_for_local_tor_socks_proxy():
+    args = build_arg_parser().parse_args(["example.com", "--tor"])
+    cfg = Config.from_args(args)
+    assert cfg.proxy == "socks5://127.0.0.1:9050"
+
+
+def test_tor_flag_takes_precedence_over_explicit_proxy():
+    args = build_arg_parser().parse_args(["example.com", "--tor", "--proxy", "http://127.0.0.1:8080"])
+    cfg = Config.from_args(args)
+    assert cfg.proxy == "socks5://127.0.0.1:9050"
+
+
+def test_validate_secrets_off_by_default():
+    args = build_arg_parser().parse_args(["example.com"])
+    cfg = Config.from_args(args)
+    assert cfg.validate_secrets is False
+
+
+def test_validate_secrets_flag_sets_config():
+    args = build_arg_parser().parse_args(["example.com", "--validate-secrets"])
+    cfg = Config.from_args(args)
+    assert cfg.validate_secrets is True

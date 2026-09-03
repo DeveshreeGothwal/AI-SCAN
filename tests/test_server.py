@@ -108,6 +108,38 @@ def test_manifest_and_tool_output_available_after_mock_run(tmp_path, monkeypatch
         assert nmap_output.status_code == 200
         assert "example.com" in nmap_output.text
 
+        # The dashboard fetches this small, pre-extracted payload instead of
+        # the whole summary.md, which embeds every tool's full raw output --
+        # verified in practice to reach tens of MB for a target with a large
+        # waybackurls archive.
+        ai_summary = client.get(f"/runs/{run_id}/ai-summary").json()
+        assert ai_summary["ai_summary"] == "[DRY-RUN] AI summarization skipped -- no LLM was called."
+        assert ai_summary["skip_note"] is None
+
+
+def test_ai_summary_falls_back_to_full_report_for_runs_without_companion_file(tmp_path, monkeypatch):
+    # Simulates a run persisted before write_ai_summary() existed: only
+    # summary.md on disk, no ai_summary.json companion file.
+    monkeypatch.chdir(tmp_path)
+    from unittest.mock import patch
+    with patch("reconai.tools.base.shutil.which", return_value="/usr/bin/tool"), \
+         TestClient(app) as client:
+        resp = client.post("/scan", json={"target": "example.com", "mock": True, "dry_run": True, "authorized": True})
+        run_id = resp.json()["run_id"]
+        _wait_for_summary(client, run_id)
+
+        run_dir = _run_dir_for(run_id)
+        (run_dir / "ai_summary.json").unlink()
+
+        ai_summary = client.get(f"/runs/{run_id}/ai-summary").json()
+    assert ai_summary["ai_summary"] == "[DRY-RUN] AI summarization skipped -- no LLM was called."
+
+
+def test_ai_summary_not_ready_before_run_dir_exists():
+    with TestClient(app) as client:
+        resp = client.get("/runs/nonexistent-run-id/ai-summary")
+    assert resp.status_code == 404
+
 
 def test_scan_rejects_unknown_wordlist_size():
     with TestClient(app) as client:
@@ -117,6 +149,52 @@ def test_scan_rejects_unknown_wordlist_size():
         )
     assert resp.status_code == 400
     assert "wordlist_size" in resp.json()["error"]
+
+
+def test_scan_rejects_unrecognized_proxy_scheme():
+    with TestClient(app) as client:
+        resp = client.post(
+            "/scan",
+            json={"target": "example.com", "dry_run": True, "authorized": True, "proxy": "ftp://127.0.0.1:21"},
+        )
+    assert resp.status_code == 400
+    assert "proxy" in resp.json()["error"].lower()
+
+
+def test_scan_accepts_valid_proxy_and_reaches_the_pipeline(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with TestClient(app) as client:
+        resp = client.post(
+            "/scan",
+            json={"target": "example.com", "dry_run": True, "authorized": True, "proxy": "socks5://127.0.0.1:9050"},
+        )
+        assert resp.status_code == 200
+        run_id = resp.json()["run_id"]
+        summary = _wait_for_summary(client, run_id)
+    # dry-run's per-tool "[DRY-RUN] would execute" message reflects the
+    # proxychains-wrapped command whenever a proxy is configured.
+    assert "proxychains4" in summary
+
+
+def test_scan_accepts_validate_secrets_and_reaches_the_pipeline(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from unittest.mock import patch
+    # secret_scan only runs once a web port is detected, which needs mock=True
+    # here since there are no real binaries on this dev machine (same reason
+    # test_manifest_and_tool_output_available_after_mock_run pairs mock+dry_run).
+    with patch("reconai.tools.base.shutil.which", return_value="/usr/bin/tool"), \
+         TestClient(app) as client:
+        resp = client.post(
+            "/scan",
+            json={"target": "example.com", "mock": True, "dry_run": True, "authorized": True,
+                  "validate_secrets": True},
+        )
+        assert resp.status_code == 200
+        run_id = resp.json()["run_id"]
+        _wait_for_summary(client, run_id)
+
+        secret_scan_output = client.get(f"/runs/{run_id}/tool/secret_scan")
+    assert secret_scan_output.status_code == 200
 
 
 def test_scan_wordlist_size_selects_gobuster_wordlist_tier(tmp_path, monkeypatch):
@@ -167,3 +245,92 @@ def test_screenshot_404_for_unknown_run():
     with TestClient(app) as client:
         resp = client.get("/runs/does-not-exist/screenshot")
     assert resp.status_code == 404
+
+
+def test_impact_available_after_scan(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with TestClient(app) as client:
+        resp = client.post("/scan", json={"target": "example.com", "dry_run": True, "authorized": True})
+        run_id = resp.json()["run_id"]
+        _wait_for_summary(client, run_id)
+
+        impact = client.get(f"/runs/{run_id}/impact").json()
+    # dry-run never actually executes a tool, so impact_analysis has nothing
+    # to detect -- a clean, deterministic "perfect score" result to assert on.
+    assert impact["available"] is True
+    assert impact["findings"] == []
+    assert impact["score"] == 100
+    assert impact["grade"] == "A"
+
+
+def test_impact_not_ready_before_run_dir_exists():
+    with TestClient(app) as client:
+        resp = client.get("/runs/nonexistent-run-id/impact")
+    assert resp.status_code == 404
+
+
+def test_impact_returns_empty_state_for_runs_without_companion_file(tmp_path, monkeypatch):
+    # Simulates a run persisted before write_impact_analysis() existed: no
+    # impact.json companion file on disk -- same fallback shape as ai-summary's
+    # equivalent regression test above.
+    monkeypatch.chdir(tmp_path)
+    with TestClient(app) as client:
+        resp = client.post("/scan", json={"target": "example.com", "dry_run": True, "authorized": True})
+        run_id = resp.json()["run_id"]
+        _wait_for_summary(client, run_id)
+
+        run_dir = _run_dir_for(run_id)
+        (run_dir / "impact.json").unlink()
+
+        impact = client.get(f"/runs/{run_id}/impact").json()
+    assert impact["available"] is False
+    assert impact["findings"] == []
+    assert impact["score"] is None
+
+
+def test_check_link_requires_url():
+    with TestClient(app) as client:
+        resp = client.post("/check-link", json={"url": ""})
+    assert resp.status_code == 400
+
+
+def test_check_link_returns_findings_from_link_safety_tool():
+    from unittest.mock import patch
+
+    from reconai.tools.base import ToolResult
+
+    canned = ToolResult(tool="link_safety", command=["reconai-link-safety"], available=True, returncode=0,
+                         stdout="Checked https://example.com\n\nVerdict: LOOKS SAFE\n\nNo risk signals detected.",
+                         stderr="", duration_s=0.1)
+    with patch("reconai.server.app.link_safety_tool.run", return_value=canned), TestClient(app) as client:
+        resp = client.post("/check-link", json={"url": "https://example.com"})
+    assert resp.status_code == 200
+    assert "LOOKS SAFE" in resp.json()["output"]
+
+
+def test_check_link_adds_https_scheme_when_missing():
+    from unittest.mock import patch
+
+    from reconai.tools.base import ToolResult
+
+    canned = ToolResult(tool="link_safety", command=["reconai-link-safety"], available=True, returncode=0,
+                         stdout="ok", stderr="", duration_s=0.1)
+    with patch("reconai.server.app.link_safety_tool.run", return_value=canned) as mock_run, \
+         TestClient(app) as client:
+        resp = client.post("/check-link", json={"url": "example.com/page"})
+    assert resp.status_code == 200
+    assert resp.json()["url"] == "https://example.com/page"
+    mock_run.assert_called_once()
+    assert mock_run.call_args[0][0] == "https://example.com/page"
+
+
+def test_check_link_surfaces_tool_unavailable_as_502():
+    from unittest.mock import patch
+
+    from reconai.tools.base import ToolResult
+
+    canned = ToolResult(tool="link_safety", command=["reconai-link-safety"], available=False, returncode=None,
+                         stdout="", stderr="", duration_s=0.0, skipped_reason="proxy requested but unavailable")
+    with patch("reconai.server.app.link_safety_tool.run", return_value=canned), TestClient(app) as client:
+        resp = client.post("/check-link", json={"url": "https://example.com"})
+    assert resp.status_code == 502

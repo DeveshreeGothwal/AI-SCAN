@@ -13,23 +13,180 @@ Claude API to write a narrative summary report.
 |-------|------|---------|
 | Passive | whois | Domain registration |
 | Passive | dnsrecon | DNS record enumeration |
+| Passive | dns_axfr | Attempts a DNS zone transfer (AXFR) against each nameserver — flags full zone leaks |
 | Passive | subfinder | Subdomain discovery |
+| Passive | crtsh | Direct certificate-transparency query (crt.sh) — extra subdomain coverage beyond subfinder's sources |
 | Passive | theHarvester | Email/host OSINT |
-| Passive | httpx | Probes subfinder's discovered subdomains for live hosts (status, title, tech) |
+| Passive | bucket_enum | Checks S3/GCS/Azure for buckets/storage accounts named after the target |
+| Passive | github_secrets | Guesses the target's GitHub org, clones its top repos, scans with trufflehog (verified secrets only) |
+| Passive | httpx | Probes discovered subdomains for live hosts (status, title, tech) |
 | Passive | subjack | Checks discovered subdomains for takeover-able dangling CNAMEs |
+| Passive | waybackurls | Fetches historical URLs from the Wayback Machine archive (never queries the target) |
 | Active | nmap | Port scan + service/version detection |
 | Active (web port found) | whatweb | Web tech fingerprinting |
 | Active | nikto | Web vuln/misconfig scanner |
 | Active | gobuster | Directory brute-forcing |
 | Active | ffuf | Directory brute-forcing (second engine — different wildcard-detection heuristics catch different things) |
 | Active | wafw00f | WAF detection |
+| Active (web port found) | cors_scan | Tests Origin-header variants for reflected/wildcard CORS misconfigurations |
+| Active (web port found) | security_headers | Clickjacking, HSTS/CSP/nosniff gaps, cookie flags, version-disclosing headers, risky HTTP methods |
+| Active (web port found) | auth_audit | Checks discovered login/registration forms for cleartext credential submission, weak password-length caps, and missing CSRF-token naming patterns |
+| Active (web port found) | privacy_scan | Checks for tracking scripts loaded without a consent-management marker, and missing Referrer-Policy/Permissions-Policy headers |
 | Active | nuclei | Template-based CVE/misconfig scanning |
 | Active | getJS | Lists JS files referenced by the page |
 | Active | LinkFinder | Extracts API endpoints/paths from page + JS |
+| Active (web port found) | cve_correlate | Cross-references whatweb/nmap product versions against the NVD for known CVEs |
+| Active (web port found) | secret_scan | Regex-scans JS files + common exposed config paths (`.env` etc.) for high-confidence secret patterns. `--validate-secrets` opt-in adds one read-only confirmatory call per Stripe/Slack secret found (see below) |
+| Active (web port found) | graphql_probe | Checks common + discovered GraphQL endpoints for introspection enabled |
+| Active (param URLs found) | injection_probe | Custom safe-detection probe: SQLi (error-based), command injection, SSTI, path traversal, open redirect, plus a static (zero-request) flag of SSRF-prone parameter names for manual follow-up |
+| Active (param URLs found) | sqlmap | SQL injection detection, locked to safe flags (see below) |
 | Active (https port found) | testssl | SSL/TLS configuration audit |
 | Active | gowitness | Screenshot, embedded into `summary.md` |
 
-Then a local Ollama model or the Claude API writes a narrative summary over all raw output.
+Then a local Ollama model or the Claude API writes a narrative summary over all raw output, and
+`reconai/report/impact_analysis.py` derives a plain-language "Security Score" (0-100 + letter
+grade) from the findings, surfaced live in the dashboard's report view.
+
+## Check a Link (standalone, no scan required)
+
+Separate from the tools table above: the dashboard's "Check a Link" tab runs a quick heuristic
+safety check on a single URL someone sends you (email/SMS/DM) — insecure connection, IP-literal
+or punycode hostname, brand-impersonation keywords, known URL shorteners, redirect-chain length,
+elevated-risk TLDs, and domain age. It's intentionally **not** gated behind the "I have
+authorization" checkbox that scans require: checking a link you received is a self-protective
+action, not testing someone else's infrastructure. See `reconai/tools/link_safety_tool.py`.
+
+See [METHODOLOGY.md](METHODOLOGY.md) for how these stages map to real bug-bounty methodology (and, just as
+importantly, what's deliberately *not* automated here and why).
+
+### Cloud/OSINT/secrets tools — all free, no required signup
+
+- `dns_axfr`, `crtsh`, `bucket_enum` need nothing beyond what's already installed — they're plain
+  HTTP/DNS requests to public infrastructure (crt.sh, S3/GCS/Azure, the target's own nameservers).
+- `cve_correlate` queries the NVD's public API. Unauthenticated requests are rate-limited to 5 per 30s,
+  which reconai respects with a deliberate delay between the (capped, few) lookups it makes. An
+  optional free `NVD_API_KEY` (signup at nvd.nist.gov, no cost) raises that to 50/30s if you want it.
+- `github_secrets` guesses a GitHub org name from the target domain and only proceeds if a matching
+  *public* org actually exists — many companies won't match, in which case it just reports that and
+  moves on. Unauthenticated GitHub API calls are limited to 60/hour; set `GITHUB_TOKEN` (a free
+  personal access token, no scopes needed for public data) if you hit that limit.
+- `bucket_enum`'s bucket-name guesses and `github_secrets`'s org-name guess both derive from
+  `base.guess_org_name()` — the label before the registrable-domain boundary (`syfe` from
+  `mark8.syfe.com`), with a small built-in list of common multi-part public suffixes (`.co.uk`,
+  `.gov.in`, etc.) so it doesn't misfire on those. Verified needed for real: `www.csk.gov.in` naively
+  guessed `"gov"` instead of `"csk"` before this list was added — not just noisy (every unrelated
+  "gov"-named S3/GCS bucket on the internet "matched"), but a real authorization-boundary risk for
+  `github_secrets` specifically, which would clone and scan whatever GitHub org is actually named
+  `"gov"` if one exists, rather than the intended target. Still a best-effort guess outside that
+  list, and for orgs that don't share the domain's name at all. `github_secrets` additionally
+  refuses to proceed when the guessed name is under 4 characters — verified for real that even the
+  *corrected* guess for `www.csk.gov.in` ("csk") is a genuine, unrelated GitHub user account (short
+  usernames are highly contested and get claimed early by unrelated people); cloning and scanning it
+  would be a real authorization-boundary violation, not just a noisy result, so it's skipped instead.
+- `cors_scan`, `security_headers`, and `graphql_probe` need nothing beyond the existing `httpx` pip
+  dependency — they're plain HTTP requests against the target's own base URL (varied `Origin`
+  headers, a GET + OPTIONS for header/method inspection, a minimal introspection query against
+  common/discovered GraphQL paths), no third-party service involved.
+
+### Validating found secrets (opt-in, minimal-impact only)
+
+`secret_scan` detects secrets by regex alone, which can't tell a live credential from one that's
+already been rotated/revoked. `--validate-secrets` (CLI) / the "validate found secrets" toggle
+(dashboard) turns on exactly one read-only confirmatory call per Stripe secret key or Slack token
+found, to the credential's own provider (`GET /v1/charges?limit=1` on Stripe, Slack's own
+`auth.test` endpoint) — the same "one confirmatory call, then stop" pattern `github_secrets` already
+uses via trufflehog's `--only-verified`. Off by default. Deliberately *not* extended to: AWS access
+keys (the regex only captures the key ID, not a paired secret, so there's nothing to validate alone),
+or a generic webhook-post-style check for Slack (posting a real message to a live channel is a
+state-changing action on the target's systems, not a read). If you need to confirm impact beyond
+that — list a Stripe account's real transactions, enumerate an AWS account, etc. — do that manually
+and deliberately outside of reconai, for the same reason noted below for injection findings.
+
+### Injection testing scope (detection only, not exploitation)
+
+`injection_probe` and `sqlmap` test parameters discovered via `waybackurls` for injection
+vulnerabilities, but deliberately stop at *detection* — reconai never extracts data, opens a shell,
+or otherwise acts on a confirmed finding:
+
+- `injection_probe` (custom, in `reconai/tools/injection_probe_tool.py`) sends a small, capped number
+  of single-purpose payloads per parameter (SQL error-based, benign `id`/`whoami` command-injection
+  check, `{{7*7}}`-style template-injection reflection, `/etc/passwd`-signature path traversal, and
+  Location-header open-redirect check for redirect-shaped parameter names) and reports only
+  high-confidence signature matches. No boolean/time-based SQLi (too noisy without a stable
+  baseline), no active SSRF probing (confirming it safely needs an out-of-band callback listener,
+  which is out of scope here — instead, parameter names with an SSRF-prone shape, e.g. `url`, `dest`,
+  `webhook`, `proxy`, are statically flagged for manual testing with zero extra requests), no XXE
+  (needs an XML-accepting endpoint, which doesn't fit GET-parameter fuzzing), no destructive payloads.
+- `sqlmap` is invoked with `--batch --risk=1 --level=1 --technique=BEU` — sqlmap's own least-invasive
+  defaults, restricted to Boolean-blind/Error-based/UNION techniques only (excludes Time-based, which
+  is slow, and Stacked-queries, which can run statements beyond the original query). reconai never
+  passes `--dump`, `--dump-all`, `--os-shell`, `--sql-shell`, or `--os-pwn`.
+
+If you need to actually extract data or gain shell access from a confirmed finding, do that manually
+and deliberately with the real `sqlmap`/`commix` CLI outside of reconai — that's a different risk
+category than automated recon and shouldn't happen unattended inside a pipeline.
+
+### Routing scans through a proxy
+
+Off by default (direct connections). Turn it on per-scan:
+
+```bash
+python3 recon.py example.com --proxy socks5://127.0.0.1:9050   # any SOCKS5/SOCKS4/HTTP proxy
+python3 recon.py example.com --tor                              # shorthand for the line above
+```
+
+`--tor` is a convenience flag for a local Tor daemon — free, no signup, no third-party service:
+
+```bash
+sudo apt install tor && sudo systemctl start tor
+```
+
+On the live dashboard, toggle "route through proxy" on the scan form and enter the proxy URL (same
+deep-link support as the rest of the form: `?proxy=socks5://127.0.0.1:9050`).
+
+**Every tool was individually, empirically verified** against a real proxy (first a local test
+listener, then a live Tor circuit against a real target) rather than assumed to work from
+documentation alone — both passes turned up real gaps, some only visible with a genuine SOCKS5
+proxy rather than a generic listener:
+
+| Mechanism | Tools |
+|---|---|
+| Native `--proxy`-style flag (most reliable) | subfinder, nuclei, httpx (ProjectDiscovery), gobuster, ffuf, gowitness, sqlmap, wafw00f, and whatweb/nikto for **HTTP proxies only** (see below) |
+| Go's default HTTP transport honors `HTTP_PROXY`/`HTTPS_PROXY` env vars | waybackurls, trufflehog |
+| `proxychains4` (works for anything linked against libc: whois, dig/dnsrecon, nmap, git, Python/Perl/bash tools) | whois, dns, dns_axfr, theHarvester, LinkFinder, nmap, git (used by github_secrets), whatweb/nikto for **SOCKS4/5 proxies**, plus a fallback layer under every tool above |
+| **Not proxyable — skipped outright rather than run unprotected** | **getJS, subjack** (small Go binaries confirmed to honor neither mechanism) |
+
+A couple of specifics worth knowing if something looks off:
+
+- **`whatweb` and `nikto` only take their own `--proxy`/`-useproxy` flag for `http://`/`https://`
+  proxies.** Verified for real against a live Tor SOCKS5 port: whatweb got `501 "Tor is not an HTTP
+  Proxy"` (Tor's own SOCKS port explicitly detects and rejects HTTP CONNECT), and nikto mis-parsed
+  the URL entirely (`can't connect: no port given for proxy server socks5::80`) — neither tool's
+  native flag understands a SOCKS proxy. For `socks4://`/`socks5://`, reconai skips their native
+  flag and falls back to `proxychains4` instead, which was separately verified to work correctly
+  for both (whatweb is Ruby, nikto is Perl — both dynamically linked against libc).
+- `nmap` switches to a TCP connect scan (`-sT`) instead of its default SYN scan whenever a proxy is
+  set — a SYN scan crafts raw packets below the socket layer, which no proxy mechanism can intercept,
+  proxychains included. Slightly slower/noisier, but there's no way around it.
+- `dig`-based lookups (`dns`, `dns_axfr`) and `testssl` (which shells out to `dig` internally to
+  resolve the target) disable proxychains' `proxy_dns` option specifically — verified for real:
+  with it on, both failed outright ("dig: parse of /etc/resolv.conf failed" →
+  "Fatal error: No IPv4/IPv6 address(es) for ... available"). The actual DNS/zone-transfer/TLS
+  traffic is still proxied; only that one internal hostname lookup falls back to your normal
+  resolver.
+- Setting proxy env vars *and* proxychains-wrapping the same call is never combined — reproduced a
+  real failure doing so (`curl: Failed to connect ... Could not connect to server`): a tool that
+  reads the env var itself tries to dial the proxy address, and proxychains intercepts that
+  connection too, looping it back through the same proxy a second time. Each subprocess call uses
+  exactly one mechanism.
+- Routing through Tor specifically adds real latency and occasional circuit flakiness — don't be
+  surprised if a slow tool (`testssl`, `gowitness`) times out or comes back empty on a run that
+  would succeed on a retry; that's Tor, not a reconai bug.
+- A `socks5://` proxy needs the optional `socksio` package for the in-process (`httpx`-based) tools
+  — already in `requirements.txt`, but if you're on an older install: `pip install httpx[socks]`.
+- `getJS`/`subjack` being unproxyable means their subdomain-takeover and JS-discovery data simply
+  won't be collected while a proxy is on. Run a second pass without `--proxy` if you need it and
+  direct connections to those specific lookups are acceptable.
 
 ## Setup (on Kali)
 
@@ -42,6 +199,13 @@ pip install -r requirements.txt
 sudo apt install -y whois dnsutils dnsrecon theharvester nmap whatweb nikto gobuster \
   nuclei wafw00f gowitness testssl.sh ffuf
 nuclei -update-templates
+
+# proxychains4 -- only needed if you use --proxy/--tor (see "Routing scans through a
+# proxy" above). Usually already present on Kali.
+sudo apt install -y proxychains4
+
+# tor -- only needed for the --tor shorthand. Free, local, no signup.
+sudo apt install -y tor && sudo systemctl start tor
 
 # subfinder isn't packaged on all Kali versions:
 go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
@@ -61,7 +225,24 @@ cd -
 
 # subjack -- subdomain takeover checking. Installs to ~/go/bin.
 go install -v github.com/haccer/subjack@latest
+
+# waybackurls -- historical/parameterized URL discovery. Installs to ~/go/bin.
+go install -v github.com/tomnomnom/waybackurls@latest
+
+# sqlmap ships preinstalled on most Kali images; if missing:
+sudo apt install -y sqlmap
+
+# trufflehog -- verified-secrets scanning for github_secrets. Installs to ~/go/bin.
+# `go install` does NOT work here -- trufflehog's go.mod has a replace directive
+# that go install rejects, so use their install script (fetches a binary release):
+curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
+  | sh -s -- -b ~/go/bin
+# Also needs `git` (sudo apt install git, usually already present on Kali).
 ```
+
+`dns_axfr` needs `dig` (already covered by `dnsutils` above). `crtsh`, `bucket_enum`,
+`cve_correlate`, `secret_scan`, `cors_scan`, `security_headers`, and `graphql_probe` need nothing
+beyond the Python `httpx` library already in `requirements.txt` — no extra install.
 
 gowitness screenshots reuse the system Chromium (`sudo apt install chromium` if not already present)
 rather than downloading its own copy.
@@ -102,6 +283,9 @@ python3 recon.py example.com --llm claude --pdf
 python3 recon.py example.com --dry-run          # check tool availability, no execution
 python3 recon.py example.com --mock --llm ollama # exercise the pipeline with canned sample output
 python3 recon.py example.com --wordlist-size medium
+python3 recon.py example.com --tor              # route through a local Tor daemon
+python3 recon.py example.com --proxy socks5://127.0.0.1:9050
+python3 recon.py example.com --validate-secrets # one read-only confirmatory call per Stripe/Slack secret found
 ```
 
 ### Live dashboard

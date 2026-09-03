@@ -13,13 +13,19 @@ _PORT_LINE_RE = re.compile(
 )
 
 
-def run(target: str, dry_run: bool = False, mock: bool = False, full_ports: bool = False) -> ToolResult:
+def run(target: str, dry_run: bool = False, mock: bool = False, full_ports: bool = False,
+        proxy: str | None = None) -> ToolResult:
+    # -sT (TCP connect scan): a SYN scan crafts raw packets below the OS
+    # socket layer, which no proxy mechanism (proxychains included) can
+    # intercept -- only an explicit connect() syscall per port can be routed
+    # through a proxy, and that's what -sT does.
+    scan_type = ["-sT"] if proxy else []
     if full_ports:
-        cmd = ["nmap", "-T4", "-sV", "-p-", "-Pn", target]
+        cmd = ["nmap", *scan_type, "-T4", "-sV", "-p-", "-Pn", target]
     else:
-        cmd = ["nmap", "-T4", "-sV", "--top-ports", "1000", "-Pn", target]
+        cmd = ["nmap", *scan_type, "-T4", "-sV", "--top-ports", "1000", "-Pn", target]
     mock_output = MOCK_OUTPUTS[NAME] if mock else None
-    return run_command(NAME, cmd, timeout=600, dry_run=dry_run, mock_output=mock_output)
+    return run_command(NAME, cmd, timeout=600, dry_run=dry_run, mock_output=mock_output, proxy=proxy)
 
 
 def parse_open_web_ports(nmap_stdout: str) -> list[tuple[int, str]]:

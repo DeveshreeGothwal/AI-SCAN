@@ -48,9 +48,11 @@ def test_mock_pipeline_emits_events_for_every_stage(tmp_path, monkeypatch):
         run_pipeline(cfg, backend=_stub_backend(), on_event=events.append)
 
     ends = {e["tool"] for e in events if e["type"] == "stage_end"}
-    for tool in ("whois", "dns", "subfinder", "theharvester", "httpx", "subjack", "nmap",
-                 "whatweb", "nikto", "gobuster", "ffuf", "wafw00f", "nuclei",
-                 "getjs", "linkfinder", "testssl", "gowitness"):
+    for tool in ("whois", "dns", "dns_axfr", "subfinder", "crtsh", "theharvester", "google_dorks",
+                 "bucket_enum", "github_secrets", "httpx", "subjack", "waybackurls", "nmap",
+                 "whatweb", "nikto", "gobuster", "ffuf", "wafw00f", "cors_scan", "security_headers",
+                 "auth_audit", "privacy_scan", "nuclei", "getjs", "linkfinder", "cve_correlate",
+                 "secret_scan", "graphql_probe", "injection_probe", "sqlmap", "testssl", "gowitness"):
         assert tool in ends, tool
 
     # events must be emitted in real time, not just collected after the fact --

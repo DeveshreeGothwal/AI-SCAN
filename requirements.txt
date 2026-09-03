@@ -1,4 +1,5 @@
 httpx>=0.28,<1.0
+socksio>=1.0,<2.0  # SOCKS5 proxy support for httpx (--proxy socks5://... in the in-process tools)
 anthropic>=0.68,<1.0
 fpdf2>=2.8,<3.0
 fastapi>=0.115,<1.0

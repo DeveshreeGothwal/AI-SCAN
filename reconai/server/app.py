@@ -6,6 +6,7 @@ import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
@@ -13,6 +14,8 @@ from pydantic import BaseModel
 
 from ..config import Config
 from ..pipeline import STAGE_ORDER, run_pipeline
+from ..report.markdown_report import extract_ai_summary, extract_first_skip_note
+from ..tools import link_safety_tool
 from ..tools.gobuster_tool import WORDLIST_TIERS
 from .events import registry
 
@@ -37,6 +40,13 @@ class ScanRequest(BaseModel):
     nmap_full: bool = False
     wordlist_size: str = "small"
     authorized: bool = False
+    proxy: Optional[str] = None
+    validate_secrets: bool = False
+
+
+class LinkCheckRequest(BaseModel):
+    url: str
+    proxy: Optional[str] = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -53,6 +63,10 @@ def start_scan(req: ScanRequest) -> JSONResponse:
     if req.wordlist_size not in WORDLIST_TIERS:
         return JSONResponse({"error": f"wordlist_size must be one of {list(WORDLIST_TIERS)}"}, status_code=400)
 
+    proxy = (req.proxy or "").strip() or None
+    if proxy and not proxy.split("://", 1)[0] in ("socks5", "socks5h", "socks4", "http", "https"):
+        return JSONResponse({"error": "proxy must start with socks5://, socks4://, http://, or https://"}, status_code=400)
+
     run_id = uuid.uuid4().hex[:12]
     registry.create(run_id, req.target)
 
@@ -67,6 +81,8 @@ def start_scan(req: ScanRequest) -> JSONResponse:
             mock=req.mock,
             nmap_full=req.nmap_full,
             gobuster_wordlist=WORDLIST_TIERS[req.wordlist_size],
+            proxy=proxy,
+            validate_secrets=req.validate_secrets,
         )
         try:
             run_pipeline(cfg, on_event=on_event)
@@ -75,6 +91,24 @@ def start_scan(req: ScanRequest) -> JSONResponse:
 
     threading.Thread(target=worker, daemon=True).start()
     return JSONResponse({"run_id": run_id})
+
+
+@app.post("/check-link")
+def check_link(req: LinkCheckRequest) -> JSONResponse:
+    """Standalone link-safety check -- deliberately NOT part of /scan and its
+    authorization gate. Checking a URL you received for safety is
+    self-protective, not an action against a third party's infrastructure,
+    so it runs synchronously with no run_id/event-stream machinery."""
+    url = req.url.strip()
+    if not url:
+        return JSONResponse({"error": "url is required"}, status_code=400)
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    proxy = (req.proxy or "").strip() or None
+    result = link_safety_tool.run(url, proxy=proxy)
+    if not result.available:
+        return JSONResponse({"error": result.skipped_reason or "check failed"}, status_code=502)
+    return JSONResponse({"url": url, "output": result.stdout})
 
 
 @app.get("/runs")
@@ -112,6 +146,39 @@ def get_summary(run_id: str) -> PlainTextResponse:
     if run_dir is None or not (run_dir / "summary.md").exists():
         return PlainTextResponse("not ready", status_code=404)
     return PlainTextResponse((run_dir / "summary.md").read_text())
+
+
+@app.get("/runs/{run_id}/ai-summary")
+def get_ai_summary(run_id: str) -> JSONResponse:
+    run_dir = _run_dir_for(run_id)
+    if run_dir is None:
+        return JSONResponse({"error": "not ready"}, status_code=404)
+    ai_summary_path = run_dir / "ai_summary.json"
+    if ai_summary_path.exists():
+        return JSONResponse(json.loads(ai_summary_path.read_text()))
+    # Fall back to extracting from the full report for runs generated before
+    # this (small, fast) companion file existed -- reads the potentially
+    # large file once, locally, server-side, which is still far cheaper than
+    # shipping the whole thing over HTTP to the browser on every page load.
+    summary_path = run_dir / "summary.md"
+    if not summary_path.exists():
+        return JSONResponse({"error": "not ready"}, status_code=404)
+    text = summary_path.read_text()
+    return JSONResponse({"ai_summary": extract_ai_summary(text), "skip_note": extract_first_skip_note(text)})
+
+
+@app.get("/runs/{run_id}/impact")
+def get_impact(run_id: str) -> JSONResponse:
+    run_dir = _run_dir_for(run_id)
+    if run_dir is None:
+        return JSONResponse({"error": "not ready"}, status_code=404)
+    impact_path = run_dir / "impact.json"
+    if not impact_path.exists():
+        # Predates this feature -- an honest empty state, not a reconstruction attempt.
+        return JSONResponse({"findings": [], "score": None, "grade": None, "available": False})
+    data = json.loads(impact_path.read_text())
+    data["available"] = True
+    return JSONResponse(data)
 
 
 @app.get("/runs/{run_id}/manifest")

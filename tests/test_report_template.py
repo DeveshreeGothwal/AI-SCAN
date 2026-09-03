@@ -49,10 +49,80 @@ def test_build_includes_stderr_when_present():
     assert "wildcard detected, aborting" in prompt
 
 
-def test_build_includes_skip_note():
+def test_build_includes_skip_notes():
     backend = _stub_backend()
-    md = markdown_report.build("example.com", _sample_results(), backend, skip_note="No web port found.")
+    md = markdown_report.build(
+        "example.com", _sample_results(), backend,
+        skip_notes=["No web port found.", "sqlmap: skipped -- no parameterized URLs discovered."],
+    )
     assert "No web port found." in md
+    assert "sqlmap: skipped -- no parameterized URLs discovered." in md
+
+
+def test_extract_ai_summary_returns_just_that_section():
+    backend = _stub_backend("Interesting summary text here.")
+    md = markdown_report.build("example.com", _sample_results(), backend,
+                                skip_notes=["nuclei: skipped -- no open web port detected by nmap."])
+    extracted = markdown_report.extract_ai_summary(md)
+    assert extracted == "Interesting summary text here."
+    assert "Raw Findings" not in extracted
+    assert "### whois" not in extracted
+
+
+def test_extract_ai_summary_handles_missing_section():
+    assert markdown_report.extract_ai_summary("no markers here at all") == ""
+
+
+def test_build_includes_impact_analysis_when_a_detector_fires():
+    backend = _stub_backend()
+    results = _sample_results() + [
+        ToolResult(tool="sqlmap", command=["sqlmap", "-u", "https://example.com/?id=1"],
+                   available=True, returncode=0,
+                   stdout="Parameter: id (GET)\nthe back-end DBMS is MySQL",
+                   stderr="", duration_s=1.0),
+    ]
+    md = markdown_report.build("example.com", results, backend)
+    assert "## Potential Impact Analysis" in md
+    assert "Confirmed SQL injection" in md
+    assert "[CRITICAL]" in md
+
+
+def test_build_omits_impact_analysis_section_when_nothing_fires():
+    backend = _stub_backend()
+    md = markdown_report.build("example.com", _sample_results(), backend)
+    assert "## Potential Impact Analysis" not in md
+
+
+def test_extract_ai_summary_stops_before_impact_analysis_section():
+    # Regression: the impact-analysis section is deterministic/rule-based, not
+    # LLM output -- it must never get swept into the "ai_summary" extraction
+    # the dashboard labels as AI-generated.
+    backend = _stub_backend("Interesting summary text here.")
+    results = _sample_results() + [
+        ToolResult(tool="sqlmap", command=["sqlmap"], available=True, returncode=0,
+                   stdout="the back-end DBMS is MySQL", stderr="", duration_s=1.0),
+    ]
+    md = markdown_report.build("example.com", results, backend)
+    extracted = markdown_report.extract_ai_summary(md)
+    assert extracted == "Interesting summary text here."
+    assert "Potential Impact Analysis" not in extracted
+    assert "Confirmed SQL injection" not in extracted
+
+
+def test_extract_first_skip_note_returns_only_the_first():
+    backend = _stub_backend()
+    md = markdown_report.build(
+        "example.com", _sample_results(), backend,
+        skip_notes=["httpx: skipped -- no subdomains discovered.",
+                    "subjack: skipped -- no subdomains discovered."],
+    )
+    assert markdown_report.extract_first_skip_note(md) == "httpx: skipped -- no subdomains discovered."
+
+
+def test_extract_first_skip_note_returns_none_when_no_skips():
+    backend = _stub_backend()
+    md = markdown_report.build("example.com", _sample_results(), backend, skip_notes=[])
+    assert markdown_report.extract_first_skip_note(md) is None
 
 
 def test_condense_truncates_long_output():
@@ -80,3 +150,22 @@ def test_pdf_render_produces_nonempty_file(tmp_path):
     pdf_report.render("Some report body text.", out_path, "example.com")
     assert out_path.exists()
     assert out_path.stat().st_size > 0
+
+
+def test_pdf_render_does_not_crash_on_non_latin1_unicode(tmp_path):
+    # Verified for real: FPDF's core Helvetica font raises
+    # FPDFUnicodeEncodingException on a plain curly quote, which is extremely
+    # common in scraped page content -- a real target's raw tool output would
+    # crash --pdf entirely without this.
+    out_path = tmp_path / "summary.pdf"
+    body = "A curly quote: “hello”, an em dash —, and an emoji \U0001F600."
+    pdf_report.render(body, out_path, "example.com")
+    assert out_path.exists()
+    assert out_path.stat().st_size > 0
+
+
+def test_pdf_render_caps_very_large_input(tmp_path, monkeypatch):
+    monkeypatch.setattr(pdf_report, "_MAX_CHARS", 100)
+    out_path = tmp_path / "summary.pdf"
+    pdf_report.render("A" * 10000, out_path, "example.com")
+    assert out_path.exists()
