@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ..config import Config
@@ -200,16 +200,6 @@ def get_tool_output(run_id: str, tool_name: str) -> PlainTextResponse:
     if not path.exists():
         return PlainTextResponse("not found", status_code=404)
     return PlainTextResponse(path.read_text())
-
-
-@app.get("/runs/{run_id}/screenshot")
-def get_screenshot(run_id: str):
-    run_dir = _run_dir_for(run_id)
-    screenshot_dir = run_dir / "screenshots" if run_dir else None
-    shots = sorted(screenshot_dir.glob("*")) if screenshot_dir and screenshot_dir.exists() else []
-    if not shots:
-        return JSONResponse({"error": "no screenshot"}, status_code=404)
-    return FileResponse(shots[-1])
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8765) -> None:

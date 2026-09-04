@@ -11,7 +11,6 @@ from reconai.tools import (
     getjs_tool,
     github_secrets_tool,
     google_dorks_tool,
-    gowitness_tool,
     httpx_tool,
     linkfinder_tool,
     nuclei_tool,
@@ -90,20 +89,6 @@ def test_linkfinder_uses_venv_python_and_script():
         result = linkfinder_tool.run("https://example.com", dry_run=True)
     assert result.command[0] == LINKFINDER_PYTHON
     assert result.command[1].endswith("linkfinder.py")
-
-
-def test_gowitness_unavailable_when_binary_missing(tmp_path):
-    with patch("reconai.tools.base.shutil.which", return_value=None):
-        result = gowitness_tool.run("https://example.com", tmp_path / "screenshots", dry_run=False)
-    assert result.available is False
-
-
-def test_gowitness_mock_does_not_touch_filesystem(tmp_path):
-    screenshot_dir = tmp_path / "screenshots"
-    with patch("reconai.tools.base.shutil.which", return_value="/usr/bin/gowitness"):
-        result = gowitness_tool.run("https://example.com", screenshot_dir, mock=True)
-    assert result.mocked is True
-    assert not screenshot_dir.exists()
 
 
 def test_subjack_dry_run_uses_go_bin_path_and_wordlist_flag():

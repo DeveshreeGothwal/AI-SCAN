@@ -87,7 +87,6 @@ MOCK_OUTPUTS: dict[str, str] = {
         "/static/main.js\n"
         "https://api.example.com/graphql\n"
     ),
-    "gowitness": "https://example.com\n[MOCK] screenshot saved (no real file written)",
     "subjack": (
         "[Not Vulnerable] www.example.com\n"
         "[VULNERABLE] old-staging.example.com (CNAME: old-staging.herokudns.com, Provider: Heroku)\n"

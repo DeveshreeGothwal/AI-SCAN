@@ -36,7 +36,7 @@ def test_dry_run_emits_stage_start_and_end_for_passive_tools(tmp_path, monkeypat
     assert "gobuster" not in starts
     skipped = [e["tool"] for e in events if e["type"] == "stage_skip"]
     assert "gobuster" in skipped
-    assert "gowitness" in skipped
+    assert "testssl" in skipped
 
 
 def test_mock_pipeline_emits_events_for_every_stage(tmp_path, monkeypatch):
@@ -52,7 +52,7 @@ def test_mock_pipeline_emits_events_for_every_stage(tmp_path, monkeypatch):
                  "bucket_enum", "github_secrets", "httpx", "subjack", "waybackurls", "nmap",
                  "whatweb", "nikto", "gobuster", "ffuf", "wafw00f", "cors_scan", "security_headers",
                  "auth_audit", "privacy_scan", "nuclei", "getjs", "linkfinder", "cve_correlate",
-                 "secret_scan", "graphql_probe", "injection_probe", "sqlmap", "testssl", "gowitness"):
+                 "secret_scan", "graphql_probe", "injection_probe", "sqlmap", "testssl"):
         assert tool in ends, tool
 
     # events must be emitted in real time, not just collected after the fact --

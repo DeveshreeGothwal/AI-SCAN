@@ -7,6 +7,12 @@ Claude API to write a narrative summary report.
 
 **Only run this against targets you own or have explicit written permission to test.**
 
+**New to this repo?** Jump to [Development (off Kali)](#development-off-kali) first — it's the
+fastest path to a working checkout on any machine (macOS/Linux/WSL), needs nothing beyond Python,
+and lets you run the full test suite plus `--dry-run`/`--mock` scans with zero setup. Real,
+non-mocked scans need the tool stack in [Setup (on Kali)](#setup-on-kali) below, which only matters
+once you're actually running scans rather than working on the code.
+
 ## Tools run
 
 | Stage | Tool | Purpose |
@@ -41,7 +47,6 @@ Claude API to write a narrative summary report.
 | Active (param URLs found) | injection_probe | Custom safe-detection probe: SQLi (error-based), command injection, SSTI, path traversal, open redirect, plus a static (zero-request) flag of SSRF-prone parameter names for manual follow-up |
 | Active (param URLs found) | sqlmap | SQL injection detection, locked to safe flags (see below) |
 | Active (https port found) | testssl | SSL/TLS configuration audit |
-| Active | gowitness | Screenshot, embedded into `summary.md` |
 
 Then a local Ollama model or the Claude API writes a narrative summary over all raw output, and
 `reconai/report/impact_analysis.py` derives a plain-language "Security Score" (0-100 + letter
@@ -151,7 +156,7 @@ proxy rather than a generic listener:
 
 | Mechanism | Tools |
 |---|---|
-| Native `--proxy`-style flag (most reliable) | subfinder, nuclei, httpx (ProjectDiscovery), gobuster, ffuf, gowitness, sqlmap, wafw00f, and whatweb/nikto for **HTTP proxies only** (see below) |
+| Native `--proxy`-style flag (most reliable) | subfinder, nuclei, httpx (ProjectDiscovery), gobuster, ffuf, sqlmap, wafw00f, and whatweb/nikto for **HTTP proxies only** (see below) |
 | Go's default HTTP transport honors `HTTP_PROXY`/`HTTPS_PROXY` env vars | waybackurls, trufflehog |
 | `proxychains4` (works for anything linked against libc: whois, dig/dnsrecon, nmap, git, Python/Perl/bash tools) | whois, dns, dns_axfr, theHarvester, LinkFinder, nmap, git (used by github_secrets), whatweb/nikto for **SOCKS4/5 proxies**, plus a fallback layer under every tool above |
 | **Not proxyable — skipped outright rather than run unprotected** | **getJS, subjack** (small Go binaries confirmed to honor neither mechanism) |
@@ -180,8 +185,8 @@ A couple of specifics worth knowing if something looks off:
   connection too, looping it back through the same proxy a second time. Each subprocess call uses
   exactly one mechanism.
 - Routing through Tor specifically adds real latency and occasional circuit flakiness — don't be
-  surprised if a slow tool (`testssl`, `gowitness`) times out or comes back empty on a run that
-  would succeed on a retry; that's Tor, not a reconai bug.
+  surprised if a slow tool (`testssl`) times out or comes back empty on a run that would succeed on
+  a retry; that's Tor, not a reconai bug.
 - A `socks5://` proxy needs the optional `socksio` package for the in-process (`httpx`-based) tools
   — already in `requirements.txt`, but if you're on an older install: `pip install httpx[socks]`.
 - `getJS`/`subjack` being unproxyable means their subdomain-takeover and JS-discovery data simply
@@ -197,7 +202,7 @@ pip install -r requirements.txt
 
 # Recon tools used (skip any you don't need — missing tools are skipped gracefully)
 sudo apt install -y whois dnsutils dnsrecon theharvester nmap whatweb nikto gobuster \
-  nuclei wafw00f gowitness testssl.sh ffuf
+  nuclei wafw00f testssl.sh ffuf
 nuclei -update-templates
 
 # proxychains4 -- only needed if you use --proxy/--tor (see "Routing scans through a
@@ -244,8 +249,35 @@ curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scr
 `cve_correlate`, `secret_scan`, `cors_scan`, `security_headers`, and `graphql_probe` need nothing
 beyond the Python `httpx` library already in `requirements.txt` — no extra install.
 
-gowitness screenshots reuse the system Chromium (`sudo apt install chromium` if not already present)
-rather than downloading its own copy.
+### Using Ubuntu instead of Kali
+
+Kali and Ubuntu are both Debian-based, so `apt` itself behaves the same — but Kali curates its own
+security-tool repos that Ubuntu doesn't have. Checked against Ubuntu 22.04/24.04's actual package
+index: `whois`, `dnsutils`, `dnsrecon`, `nmap`, `whatweb`, `nikto`, `gobuster`, `wafw00f`,
+`testssl.sh`, `ffuf`, `sqlmap`, `proxychains4`, and `tor` are all present in Ubuntu's own repos and
+install identically. Three are **not** packaged for Ubuntu at all and need a different install path:
+
+```bash
+# nuclei is a Go tool -- go install works the same as subfinder/httpx above:
+go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+
+# gobuster: Ubuntu 22.04 ships v2.0.1 via apt, which doesn't have the "dir"
+# subcommand this project's gobuster_tool.py depends on (gobuster v3 syntax --
+# `gobuster dir -u ... -w ...`). 22.04's apt package will fail outright. 24.04
+# ships v3.6.0 and is fine as-is; on 22.04 (or to be safe regardless of
+# release), get current v3 via go install instead of apt:
+go install github.com/OJ/gobuster/v3@latest
+
+# theHarvester isn't packaged for Ubuntu -- follow its own install instructions:
+# https://github.com/laramies/theHarvester
+
+# seclists (only needed for --wordlist-size large) -- clone instead of apt:
+git clone https://github.com/danielmiessler/SecLists.git ~/SecLists
+# then: python3 recon.py <target> --wordlist-size large --wordlist ~/SecLists/Discovery/Web-Content/raft-large-directories.txt
+```
+
+Also install a Go toolchain if it's not already present (`sudo apt install -y golang-go`) — needed
+for every `go install` line on this page, Kali or Ubuntu alike.
 
 ### Wordlists (gobuster/ffuf)
 
@@ -303,17 +335,27 @@ ssh -L 8765:127.0.0.1:8765 <kali-host>
 # then open http://127.0.0.1:8765 locally
 ```
 
-Results are written to `results/<target>/<timestamp>/`: one `.txt` file per tool, a `screenshots/`
-directory (gowitness), `summary.md` (AI narrative + raw findings, with the screenshot embedded),
-optional `summary.pdf`, and `manifest.json` (run metadata).
+Results are written to `results/<target>/<timestamp>/`: one `.txt` file per tool, `summary.md` (AI
+narrative + raw findings), `impact.json` (the Security Score data), optional `summary.pdf`, and
+`manifest.json` (run metadata).
 
 ## Development (off Kali)
 
 None of the recon binaries exist outside Linux, so pipeline/report logic is developed and tested
 here using `--dry-run` (exercises the "tool not found" path for every wrapper) and `--mock`
-(exercises the full pipeline against canned realistic sample output). Run the test suite with:
+(exercises the full pipeline against canned realistic sample output). Verified working from a
+clean clone on macOS with just Python 3.9+:
 
 ```bash
+git clone <this repo> && cd reconai
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt pytest
-pytest tests/
+pytest tests/                              # 288 tests, no external tools needed
+python3 recon.py example.com --dry-run --yes
 ```
+
+`--yes` above isn't optional in a script/CI context: the authorization banner refuses to proceed
+in a non-interactive session unless it's passed explicitly, even if you pipe `y` at the prompt —
+deliberate, so a scan can't accidentally run unattended without someone actually confirming
+authorization. Only needed for `--dry-run`/`--mock`/scripted runs; a real interactive terminal
+session prompts normally.

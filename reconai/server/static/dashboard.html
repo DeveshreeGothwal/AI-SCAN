@@ -543,14 +543,6 @@
     margin: 0;
   }
 
-  #reportPanel img {
-    max-width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    margin-bottom: 20px;
-    box-shadow: 0 0 24px rgba(164,139,255,0.18);
-  }
-
   /* ---- findings accordion ---- */
   .finding {
     border: 1px solid var(--border);
@@ -724,7 +716,6 @@
       </div>
     </div>
     <div id="reportPanel">
-      <img id="reportShot" style="display:none" />
       <div class="ai-summary-card">
         <span class="ai-tag">AI SUMMARY</span>
         <div id="reportAiText"></div>
@@ -758,7 +749,7 @@ const STAGES = [
     ["cve_correlate", "CVE CORRELATE"], ["secret_scan", "SECRET SCAN"],
     ["graphql_probe", "GRAPHQL"], ["injection_probe", "INJECTION PROBE"], ["sqlmap", "SQLMAP"],
   ]},
-  { phase: "TLS / Visual", tools: [["testssl", "TLS AUDIT"], ["gowitness", "SCREENSHOT"]] },
+  { phase: "TLS Audit", tools: [["testssl", "TLS AUDIT"]] },
   { phase: "Report", tools: [["ai_summary", "AI SUMMARY"]] },
 ];
 const TOTAL_STAGES = STAGES.reduce((n, p) => n + p.tools.length, 0);
@@ -1008,14 +999,6 @@ async function viewReport(runId) {
   const skipNote = aiSummaryData ? aiSummaryData.skip_note : null;
 
   renderScoreCard(impactData);
-
-  // FastAPI doesn't auto-support HEAD on this GET route, so probe by just
-  // trying to load the image and reacting to onerror/onload instead.
-  const img = $("reportShot");
-  img.onerror = () => { img.style.display = "none"; };
-  img.onload = () => { img.style.display = "block"; };
-  img.style.display = "none";
-  img.src = `/runs/${runId}/screenshot?t=${Date.now()}`;
 
   const byTool = {};
   if (manifest) for (const t of manifest.tools) byTool[t.tool] = t;

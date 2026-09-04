@@ -10,7 +10,6 @@ from reconai.tools import (
     ffuf_tool,
     getjs_tool,
     gobuster_tool,
-    gowitness_tool,
     httpx_tool,
     nikto_tool,
     nmap_tool,
@@ -211,14 +210,6 @@ def test_ffuf_appends_native_proxy_flag():
         ffuf_tool.run("https://example.com", proxy="http://127.0.0.1:8080")
     cmd = mock_run.call_args.args[1]
     assert "-x" in cmd and "http://127.0.0.1:8080" in cmd
-
-
-def test_gowitness_appends_native_proxy_flag(tmp_path):
-    with patch("reconai.tools.gowitness_tool.run_command") as mock_run:
-        mock_run.return_value = MagicMock(available=True, returncode=0, extra={})
-        gowitness_tool.run("https://example.com", tmp_path, dry_run=True, proxy="socks5://127.0.0.1:9050")
-    cmd = mock_run.call_args.args[1]
-    assert "--chrome-proxy" in cmd and "socks5://127.0.0.1:9050" in cmd
 
 
 def test_sqlmap_appends_native_proxy_flag():

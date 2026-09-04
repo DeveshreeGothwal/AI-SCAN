@@ -102,7 +102,7 @@ def test_manifest_and_tool_output_available_after_mock_run(tmp_path, monkeypatch
         assert manifest["target"] == "example.com"
         tool_names = {t["tool"] for t in manifest["tools"]}
         assert "nmap" in tool_names
-        assert "gowitness" in tool_names
+        assert "testssl" in tool_names
 
         nmap_output = client.get(f"/runs/{run_id}/tool/nmap")
         assert nmap_output.status_code == 200
@@ -238,12 +238,6 @@ def test_manifest_404_for_unknown_run():
 def test_summary_404_for_unknown_run():
     with TestClient(app) as client:
         resp = client.get("/runs/does-not-exist/summary")
-    assert resp.status_code == 404
-
-
-def test_screenshot_404_for_unknown_run():
-    with TestClient(app) as client:
-        resp = client.get("/runs/does-not-exist/screenshot")
     assert resp.status_code == 404
 
 

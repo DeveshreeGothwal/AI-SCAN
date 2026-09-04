@@ -23,7 +23,6 @@ from .tools import (
     github_secrets_tool,
     gobuster_tool,
     google_dorks_tool,
-    gowitness_tool,
     graphql_probe_tool,
     httpx_tool,
     injection_probe_tool,
@@ -82,7 +81,7 @@ STAGE_ORDER = (
     "whatweb", "nikto", "gobuster", "ffuf", "wafw00f", "cors_scan", "security_headers",
     "auth_audit", "privacy_scan", "nuclei", "getjs", "linkfinder",
     "cve_correlate", "secret_scan", "graphql_probe", "injection_probe", "sqlmap",
-    "testssl", "gowitness",
+    "testssl",
     "ai_summary",
 )
 
@@ -259,17 +258,9 @@ def run_pipeline(cfg: Config, backend: LLMBackend | None = None, on_event: Event
             _emit(on_event, _stage_end_event(testssl_result))
         else:
             _skip(ctx, on_event, testssl_tool.NAME, "no https port")
-
-        screenshot_dir = run_dir / "screenshots"
-        _emit(on_event, {"type": "stage_start", "tool": gowitness_tool.NAME})
-        gowitness_result = gowitness_tool.run(base_url, screenshot_dir, dry_run=cfg.dry_run,
-                                               mock=cfg.mock, proxy=cfg.proxy)
-        results.write_tool_output(run_dir, gowitness_tool.NAME, gowitness_result)
-        ctx.results.append(gowitness_result)
-        _emit(on_event, _stage_end_event(gowitness_result))
     else:
         for tool_module in (*WEB_TOOLS, cve_correlate_tool, secret_scan_tool, graphql_probe_tool,
-                             *_PARAM_URL_TOOLS, testssl_tool, gowitness_tool):
+                             *_PARAM_URL_TOOLS, testssl_tool):
             _skip(ctx, on_event, tool_module.NAME, "no open web port detected by nmap")
 
     _emit(on_event, {"type": "stage_start", "tool": "ai_summary"})

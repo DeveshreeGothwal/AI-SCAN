@@ -38,7 +38,7 @@ def test_mock_pipeline_detects_web_port_and_runs_web_tools(tmp_path, monkeypatch
 
     for tool_file in (
         "whatweb.txt", "nikto.txt", "gobuster.txt", "ffuf.txt", "wafw00f.txt",
-        "nuclei.txt", "getjs.txt", "linkfinder.txt", "testssl.txt", "gowitness.txt",
+        "nuclei.txt", "getjs.txt", "linkfinder.txt", "testssl.txt",
         "httpx.txt", "subjack.txt", "waybackurls.txt", "injection_probe.txt", "sqlmap.txt",
         "dns_axfr.txt", "crtsh.txt", "bucket_enum.txt", "github_secrets.txt",
         "cve_correlate.txt", "secret_scan.txt", "cors_scan.txt", "security_headers.txt",
@@ -54,8 +54,8 @@ def test_mock_pipeline_detects_web_port_and_runs_web_tools(tmp_path, monkeypatch
     # github_secrets, httpx, subjack, waybackurls, nmap, whatweb, nikto, gobuster, ffuf,
     # wafw00f, cors_scan, security_headers, auth_audit, privacy_scan, nuclei, getjs,
     # linkfinder, cve_correlate, secret_scan, graphql_probe, injection_probe, sqlmap,
-    # testssl, gowitness
-    assert len(manifest["tools"]) == 32
+    # testssl
+    assert len(manifest["tools"]) == 31
 
     impact = json.loads((ctx.run_dir / "impact.json").read_text())
     assert "findings" in impact and "score" in impact and "grade" in impact

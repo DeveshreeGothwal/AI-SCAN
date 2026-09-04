@@ -116,7 +116,6 @@ APT_HINTS = {
     "ffuf": "ffuf",
     "wafw00f": "wafw00f",
     "testssl": "testssl.sh",
-    "gowitness": "gowitness",
     "sqlmap": "sqlmap",
     "git": "git",
     _HTTPX_BIN: (
