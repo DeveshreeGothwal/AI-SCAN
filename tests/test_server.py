@@ -328,3 +328,60 @@ def test_check_link_surfaces_tool_unavailable_as_502():
     with patch("reconai.server.app.link_safety_tool.run", return_value=canned), TestClient(app) as client:
         resp = client.post("/check-link", json={"url": "https://example.com"})
     assert resp.status_code == 502
+
+
+def test_basic_auth_is_a_noop_when_env_vars_unset(monkeypatch):
+    monkeypatch.delenv("DASHBOARD_BASIC_AUTH_USER", raising=False)
+    monkeypatch.delenv("DASHBOARD_BASIC_AUTH_PASS", raising=False)
+    with TestClient(app) as client:
+        resp = client.get("/")
+    assert resp.status_code == 200
+
+
+def test_basic_auth_rejects_missing_credentials_when_configured(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_BASIC_AUTH_USER", "judge")
+    monkeypatch.setenv("DASHBOARD_BASIC_AUTH_PASS", "s3cret")
+    with TestClient(app) as client:
+        resp = client.get("/")
+    assert resp.status_code == 401
+    assert resp.headers["www-authenticate"] == 'Basic realm="reconai"'
+
+
+def test_basic_auth_rejects_wrong_credentials_when_configured(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_BASIC_AUTH_USER", "judge")
+    monkeypatch.setenv("DASHBOARD_BASIC_AUTH_PASS", "s3cret")
+    with TestClient(app) as client:
+        resp = client.get("/", auth=("judge", "wrong-password"))
+    assert resp.status_code == 401
+
+
+def test_basic_auth_accepts_correct_credentials_when_configured(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_BASIC_AUTH_USER", "judge")
+    monkeypatch.setenv("DASHBOARD_BASIC_AUTH_PASS", "s3cret")
+    with TestClient(app) as client:
+        resp = client.get("/", auth=("judge", "s3cret"))
+    assert resp.status_code == 200
+
+
+def test_scan_allowlist_is_a_noop_when_env_var_unset(tmp_path, monkeypatch):
+    monkeypatch.delenv("ALLOWED_SCAN_TARGETS", raising=False)
+    monkeypatch.chdir(tmp_path)
+    with TestClient(app) as client:
+        resp = client.post("/scan", json={"target": "example.com", "dry_run": True, "authorized": True})
+    assert resp.status_code == 200
+
+
+def test_scan_allowlist_rejects_target_not_in_list(monkeypatch):
+    monkeypatch.setenv("ALLOWED_SCAN_TARGETS", "scanme.nmap.org")
+    with TestClient(app) as client:
+        resp = client.post("/scan", json={"target": "example.com", "dry_run": True, "authorized": True})
+    assert resp.status_code == 400
+    assert "scanme.nmap.org" in resp.json()["error"]
+
+
+def test_scan_allowlist_accepts_target_in_list(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALLOWED_SCAN_TARGETS", "scanme.nmap.org, example.com")
+    monkeypatch.chdir(tmp_path)
+    with TestClient(app) as client:
+        resp = client.post("/scan", json={"target": "example.com", "dry_run": True, "authorized": True})
+    assert resp.status_code == 200

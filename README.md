@@ -339,6 +339,48 @@ Results are written to `results/<target>/<timestamp>/`: one `.txt` file per tool
 narrative + raw findings), `impact.json` (the Security Score data), optional `summary.pdf`, and
 `manifest.json` (run metadata).
 
+## Public demo deployment (Render)
+
+`Dockerfile` builds the whole tool stack on top of `kalilinux/kali-rolling` (a near-verbatim copy
+of the [Setup (on Kali)](#setup-on-kali) block above, so it's the same proven install commands,
+not a reinvented Ubuntu/Debian equivalent), and `render.yaml` deploys it as a Render Blueprint:
+
+1. Push this repo to GitHub (already done if you're reading this from there).
+2. On [render.com](https://render.com): **New → Blueprint**, point it at the repo. It picks up
+   `render.yaml` automatically.
+3. Fill in the env vars Render prompts for (declared with `sync: false` in `render.yaml`, so
+   they're entered directly in Render's dashboard, never committed to the repo):
+   - **`ANTHROPIC_API_KEY`** (required) — Ollama isn't viable in a small container (no local model
+     server, not enough RAM), so this deployment runs on the Claude backend.
+   - **`DASHBOARD_BASIC_AUTH_USER`** / **`DASHBOARD_BASIC_AUTH_PASS`** (strongly recommended) —
+     without these, the dashboard and every real scan it can trigger is reachable by anyone who
+     finds the URL, not just people you've shared it with. Once set, every request needs HTTP
+     Basic Auth (the browser's own login prompt — no extra code to visit). Give judges the
+     link plus this username/password.
+   - **`ALLOWED_SCAN_TARGETS`** (strongly recommended, defaults to `scanme.nmap.org` in
+     `render.yaml`) — restricts `/scan` to a comma-separated allowlist. Without this, anyone with
+     dashboard access could point real scan traffic (port scans, sqlmap, directory brute-forcing)
+     at *any* domain from Render's shared IP space — exactly what cloud providers' acceptable-use
+     policies prohibit, regardless of who's asking or why. `scanme.nmap.org` is Nmap's own
+     official public test target, maintained with blanket permission for exactly this. This
+     restriction only applies to `/scan` — the standalone "Check a Link" feature is unaffected,
+     since it only ever makes one benign GET + a WHOIS lookup against whatever URL you give it.
+
+   None of these three are required for the Docker image to *build* — only for the deployment to
+   be safe to leave a public link to. Don't skip the last two for anything other than a
+   locked-down/private Render service.
+
+4. Pick a paid instance type, not the free tier — Render's free web services spin down after 15
+   minutes idle, which reintroduces a cold-start delay on a judge's click and defeats the point of
+   not using a tunnel.
+5. When you're done: suspend or delete the Render service (or just unset the basic-auth password)
+   to kill the link instantly. No lingering cost or exposure.
+
+Neither this Dockerfile nor a full Docker build has been run/verified locally (no Docker available
+in this project's dev environment) — Render's own build is the first real test of the full
+install sequence end-to-end. Watch the first build's logs; a specific install step may need a
+follow-up fix.
+
 ## Development (off Kali)
 
 None of the recon binaries exist outside Linux, so pipeline/report logic is developed and tested

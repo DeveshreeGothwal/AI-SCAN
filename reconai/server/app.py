@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import os
+import secrets
 import threading
 import uuid
 from contextlib import asynccontextmanager
@@ -11,6 +14,9 @@ from typing import Optional
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from ..config import Config
 from ..pipeline import STAGE_ORDER, run_pipeline
@@ -30,6 +36,47 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="reconai live dashboard", lifespan=_lifespan)
+
+
+class _BasicAuthMiddleware(BaseHTTPMiddleware):
+    """No-op unless DASHBOARD_BASIC_AUTH_USER and DASHBOARD_BASIC_AUTH_PASS are
+    both set -- read fresh per-request rather than cached at import time, so a
+    local/Kali run with neither var set (the default) is completely
+    unaffected, and a public deployment (Render, etc.) can turn this on
+    without any code change. Whole-app gate, not per-route: the point is that
+    nobody who doesn't already have the password can even see the dashboard
+    exists, let alone trigger a scan from it."""
+
+    async def dispatch(self, request: Request, call_next):
+        expected_user = os.environ.get("DASHBOARD_BASIC_AUTH_USER")
+        expected_pass = os.environ.get("DASHBOARD_BASIC_AUTH_PASS")
+        if not expected_user or not expected_pass:
+            return await call_next(request)
+
+        header = request.headers.get("authorization", "")
+        if header.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(header[6:]).decode("utf-8")
+            except ValueError:
+                decoded = ""
+            user, _, password = decoded.partition(":")
+            if secrets.compare_digest(user, expected_user) and secrets.compare_digest(password, expected_pass):
+                return await call_next(request)
+        return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="reconai"'})
+
+
+app.add_middleware(_BasicAuthMiddleware)
+
+
+def _allowed_scan_targets() -> set[str]:
+    """Opt-in allowlist for /scan (not /check-link -- that endpoint only ever
+    makes one benign GET + a whois lookup against a URL someone hands it,
+    nothing port-scan/brute-force-shaped, so there's nothing there for an
+    allowlist to protect against). Empty by default (no restriction) unless
+    ALLOWED_SCAN_TARGETS is set -- e.g. to a known-safe public test target
+    like scanme.nmap.org for a public demo deployment."""
+    raw = os.environ.get("ALLOWED_SCAN_TARGETS", "")
+    return {t.strip() for t in raw.split(",") if t.strip()}
 
 
 class ScanRequest(BaseModel):
@@ -60,6 +107,12 @@ def start_scan(req: ScanRequest) -> JSONResponse:
         return JSONResponse({"error": "target is required"}, status_code=400)
     if not req.authorized:
         return JSONResponse({"error": "you must confirm authorization to scan this target"}, status_code=400)
+    allowed_targets = _allowed_scan_targets()
+    if allowed_targets and req.target.strip() not in allowed_targets:
+        return JSONResponse(
+            {"error": f"this deployment only allows scanning: {', '.join(sorted(allowed_targets))}"},
+            status_code=400,
+        )
     if req.wordlist_size not in WORDLIST_TIERS:
         return JSONResponse({"error": f"wordlist_size must be one of {list(WORDLIST_TIERS)}"}, status_code=400)
 

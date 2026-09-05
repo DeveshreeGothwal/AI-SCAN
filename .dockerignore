@@ -1,0 +1,9 @@
+venv/
+results/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.pdf
+.DS_Store
+.claude/

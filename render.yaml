@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: reconai-demo
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      # Required -- Ollama isn't viable in this container (no local model
+      # server, not enough RAM), so the dashboard defaults to Claude.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Strongly recommended -- without these, the dashboard (and every real
+      # scan it can trigger) is reachable by anyone who finds the URL. See
+      # reconai/server/app.py's _BasicAuthMiddleware.
+      - key: DASHBOARD_BASIC_AUTH_USER
+        sync: false
+      - key: DASHBOARD_BASIC_AUTH_PASS
+        sync: false
+      # Strongly recommended -- restricts /scan to a known-safe target so this
+      # public instance can't be used to generate real scan traffic (port
+      # scans, sqlmap, directory brute-forcing) against an arbitrary domain.
+      # scanme.nmap.org is Nmap's own official public test target, maintained
+      # specifically with blanket permission for this. See
+      # reconai/server/app.py's _allowed_scan_targets().
+      - key: ALLOWED_SCAN_TARGETS
+        value: scanme.nmap.org
