@@ -6,7 +6,7 @@ import httpx
 
 from .base import LLMBackend
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = "openai/gpt-oss-120b"  # llama-3.3-70b-versatile was deprecated 2026-06-17
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
