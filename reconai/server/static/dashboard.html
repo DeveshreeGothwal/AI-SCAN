@@ -140,6 +140,43 @@
     border-radius: 999px;
   }
 
+  .demo-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--warn);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    box-shadow: var(--glow-warn);
+  }
+  .demo-notice-body {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .demo-notice-body strong { color: var(--warn); }
+  .demo-notice-body code {
+    font-family: var(--mono);
+    background: rgba(232, 200, 150, 0.12);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  .demo-notice-close {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+    flex-shrink: 0;
+  }
+  .demo-notice-close:hover { color: var(--text); }
+
   .panel {
     background: linear-gradient(180deg, var(--panel), var(--panel-2));
     border: 1px solid var(--border);
@@ -614,6 +651,18 @@
       <div class="badge" id="connBadge">● IDLE</div>
     </div>
   </header>
+
+  <div class="demo-notice" id="demoNotice">
+    <div class="demo-notice-body">
+      <strong>Demo notes:</strong> this public instance only allows scanning
+      <code>scanme.nmap.org</code> — Nmap's own official test target — to avoid firing real scan
+      traffic at arbitrary domains from a shared public link. To try it: enter
+      <code>scanme.nmap.org</code> as the target below, tick "I am authorized to scan this
+      target", click <strong>Run Scan</strong>, then watch the live feed or check
+      <strong>History</strong> once it's done.
+    </div>
+    <button class="demo-notice-close" id="demoNoticeClose" aria-label="Dismiss">&times;</button>
+  </div>
 
   <div class="panel" id="formPanel">
     <h2>New Scan</h2>
@@ -1145,6 +1194,7 @@ $("navHistory").addEventListener("click", () => { loadHistory(); showView("histo
 $("navLinkCheck").addEventListener("click", () => showView("linkcheck"));
 $("backToHistoryBtn").addEventListener("click", () => { loadHistory(); showView("history"); });
 $("nodePeekClose").addEventListener("click", closeNodePeek);
+$("demoNoticeClose").addEventListener("click", () => { $("demoNotice").style.display = "none"; });
 
 // verdict string ("LOOKS SAFE" / "USE CAUTION" / "HIGH RISK") -> badge class
 function verdictClass(verdict) {
