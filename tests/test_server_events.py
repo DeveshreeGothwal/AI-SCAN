@@ -60,6 +60,27 @@ def test_registry_evicts_oldest_completed_runs_over_capacity(monkeypatch):
     assert len(registry.list_runs()) == 3
 
 
+def test_subscribe_yields_heartbeat_during_a_silent_gap(monkeypatch):
+    monkeypatch.setattr(events, "_HEARTBEAT_INTERVAL", 0.01)
+
+    async def scenario():
+        registry = RunRegistry()
+        registry.create("run1", "example.com")
+
+        collected = []
+        async for event in registry.subscribe("run1"):
+            collected.append(event)
+            if len(collected) == 3:
+                registry.publish("run1", {"type": "pipeline_end", "run_dir": "x"})
+            if len(collected) == 4:
+                break
+        return collected
+
+    collected = asyncio.run(scenario())
+    assert collected[:3] == [None, None, None]
+    assert collected[3]["type"] == "pipeline_end"
+
+
 def test_registry_never_evicts_an_in_progress_run(monkeypatch):
     monkeypatch.setattr(events, "_MAX_TRACKED_RUNS", 2)
     registry = RunRegistry()

@@ -187,7 +187,10 @@ def list_runs() -> list[dict]:
 async def stream_events(run_id: str) -> StreamingResponse:
     async def event_stream():
         async for event in registry.subscribe(run_id):
-            yield f"data: {json.dumps(event)}\n\n"
+            if event is None:
+                yield ": keep-alive\n\n"  # SSE comment -- ignored by EventSource, just keeps bytes flowing
+            else:
+                yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

@@ -18,6 +18,7 @@ class RunState:
 
 
 _MAX_TRACKED_RUNS = 200
+_HEARTBEAT_INTERVAL = 15.0
 
 
 class RunRegistry:
@@ -83,7 +84,14 @@ class RunRegistry:
             else:
                 queue.put_nowait(event)
 
-    async def subscribe(self, run_id: str) -> AsyncIterator[dict]:
+    async def subscribe(self, run_id: str) -> AsyncIterator[dict | None]:
+        """Yields real events as they publish, plus a `None` heartbeat every
+        _HEARTBEAT_INTERVAL seconds of silence. Without this, a slow stage (an
+        unauthenticated GitHub API call comfortably clearing a minute, say)
+        leaves the connection with no bytes flowing for that whole stretch --
+        long enough that a reverse proxy in front of the app (verified in
+        practice against Render's) treats it as idle and kills it, even though
+        the scan itself is still running fine server-side."""
         state = self._runs.get(run_id)
         if state is None:
             return
@@ -93,7 +101,11 @@ class RunRegistry:
         state.subscribers.append(queue)
         try:
             while True:
-                event = await queue.get()
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_INTERVAL)
+                except asyncio.TimeoutError:
+                    yield None
+                    continue
                 yield event
                 if event.get("type") in ("pipeline_end", "pipeline_error"):
                     break
