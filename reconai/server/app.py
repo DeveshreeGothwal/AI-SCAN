@@ -124,6 +124,16 @@ def start_scan(req: ScanRequest) -> JSONResponse:
             {"error": f"this deployment only allows scanning: {', '.join(sorted(allowed_targets))}"},
             status_code=400,
         )
+    if any(not s.done for s in registry.list_runs()):
+        # Each scan runs the full tool chain in its own thread with no cap --
+        # verified in practice that a single scan alone can push a 512MB
+        # container over its memory limit (github_secrets cloning + scanning a
+        # real repo). Concurrent scans would only compound that, so this
+        # shared, resource-constrained instance runs one at a time.
+        return JSONResponse(
+            {"error": "a scan is already running on this shared instance -- wait for it to finish, or check History"},
+            status_code=409,
+        )
     if req.wordlist_size not in WORDLIST_TIERS:
         return JSONResponse({"error": f"wordlist_size must be one of {list(WORDLIST_TIERS)}"}, status_code=400)
 

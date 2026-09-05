@@ -502,23 +502,18 @@ def test_github_secrets_falls_back_to_user_account_when_no_org_exists():
     assert clone_urls == ["https://github.com/example/personal-repo.git"]
 
 
-def test_github_secrets_clones_and_scans_repos(tmp_path, monkeypatch):
+def test_github_secrets_reports_clean_repo_with_no_secrets(tmp_path, monkeypatch):
     fake_git = tmp_path / "git"
     fake_git.write_text('#!/bin/sh\nmkdir -p "$6"\n')
     fake_git.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
 
     fake_trufflehog = tmp_path / "trufflehog"
-    fake_trufflehog.write_text(
-        '#!/bin/sh\ncase "$2" in *secret-repo*) echo \'{"DetectorName":"AWS","Verified":true}\' ;; esac\n'
-    )
+    fake_trufflehog.write_text('#!/bin/sh\n')
     fake_trufflehog.chmod(0o755)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=[
-            {"clone_url": "https://github.com/exampleorg/clean-repo.git"},
-            {"clone_url": "https://github.com/exampleorg/secret-repo.git"},
-        ])
+        return httpx.Response(200, json=[{"clone_url": "https://github.com/exampleorg/clean-repo.git"}])
 
     class _MockClient(httpx.Client):
         def __init__(self, *args, **kwargs):
@@ -533,6 +528,35 @@ def test_github_secrets_clones_and_scans_repos(tmp_path, monkeypatch):
 
     assert "clean-repo" in result.stdout
     assert "no verified secrets found" in result.stdout
+
+
+def test_github_secrets_reports_verified_secret_finding(tmp_path, monkeypatch):
+    # _MAX_REPOS is 1 (each clone+scan is real memory/CPU work -- verified in
+    # practice to OOM a 512MB container scanning more), so only the single
+    # most-recently-pushed repo the mocked API returns gets cloned and scanned.
+    fake_git = tmp_path / "git"
+    fake_git.write_text('#!/bin/sh\nmkdir -p "$6"\n')
+    fake_git.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+    fake_trufflehog = tmp_path / "trufflehog"
+    fake_trufflehog.write_text('#!/bin/sh\necho \'{"DetectorName":"AWS","Verified":true}\'\n')
+    fake_trufflehog.chmod(0o755)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[{"clone_url": "https://github.com/exampleorg/secret-repo.git"}])
+
+    class _MockClient(httpx.Client):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    with patch("reconai.tools.base.shutil.which",
+               side_effect=lambda b: str(fake_trufflehog) if b == str(fake_trufflehog) else str(tmp_path / "git")), \
+         patch("reconai.tools.github_secrets_tool._TRUFFLEHOG_BIN", str(fake_trufflehog)), \
+         patch("reconai.tools.github_secrets_tool.httpx.Client", _MockClient):
+        result = github_secrets_tool.run("example.com", dry_run=False)
+
     assert "secret-repo" in result.stdout
     assert '"Verified":true' in result.stdout
 

@@ -20,7 +20,8 @@ from .mock_data import MOCK_OUTPUTS
 
 NAME = "github_secrets"
 
-_MAX_REPOS = 3
+_MAX_REPOS = 1  # each clone+scan is real memory/CPU work -- verified in practice to OOM a
+                # 512MB container scanning a real org's repos at the old value of 3
 _CLONE_TIMEOUT = 60
 _SCAN_TIMEOUT = 120
 # Below this length, a guessed org/user name has a materially higher chance

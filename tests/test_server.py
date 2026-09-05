@@ -141,6 +141,14 @@ def test_ai_summary_not_ready_before_run_dir_exists():
     assert resp.status_code == 404
 
 
+def test_scan_rejects_when_another_scan_is_already_running():
+    registry.create("already-running", "other.com")  # no pipeline_end -- still "running"
+    with TestClient(app) as client:
+        resp = client.post("/scan", json={"target": "example.com", "dry_run": True, "authorized": True})
+    assert resp.status_code == 409
+    assert "already running" in resp.json()["error"].lower()
+
+
 def test_scan_rejects_unknown_wordlist_size():
     with TestClient(app) as client:
         resp = client.post(

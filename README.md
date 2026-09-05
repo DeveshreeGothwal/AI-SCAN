@@ -383,10 +383,16 @@ not a reinvented Ubuntu/Debian equivalent), and `render.yaml` deploys it as a Re
    locked-down/private Render service.
 
 4. `render.yaml` requests the **free** instance type, so no payment info is needed to deploy.
-   The tradeoff: Render's free web services spin down after 15 minutes idle, so the first request
-   after a gap takes ~30-60s to wake back up before the dashboard responds. If that cold start is
-   a problem for a specific demo moment, switch `plan: free` to `plan: starter` in `render.yaml`
-   (requires a card on file) for an always-on instance.
+   Two tradeoffs come with that:
+   - Free web services spin down after 15 minutes idle, so the first request after a gap takes
+     ~30-60s to wake back up before the dashboard responds. If that cold start is a problem for a
+     specific demo moment, switch `plan: free` to `plan: starter` in `render.yaml` (requires a
+     card on file) for an always-on instance.
+   - **512MB RAM** -- verified in practice that a single scan's `github_secrets` stage (cloning +
+     scanning a real repo) can OOM-crash the container at this limit. `/scan` now runs one scan at
+     a time server-side (409 if another is already in progress) specifically to avoid compounding
+     that with concurrent scans; `github_secrets` also only clones/scans the single
+     most-recently-pushed repo rather than several.
 5. When you're done: suspend or delete the Render service (or just unset the basic-auth password)
    to kill the link instantly. No lingering cost or exposure.
 
