@@ -48,9 +48,11 @@ once you're actually running scans rather than working on the code.
 | Active (param URLs found) | sqlmap | SQL injection detection, locked to safe flags (see below) |
 | Active (https port found) | testssl | SSL/TLS configuration audit |
 
-Then a local Ollama model or the Claude API writes a narrative summary over all raw output, and
-`reconai/report/impact_analysis.py` derives a plain-language "Security Score" (0-100 + letter
-grade) from the findings, surfaced live in the dashboard's report view.
+Then a local Ollama model or a cloud API (Claude/Groq) writes a narrative summary over all raw
+output, and `reconai/report/impact_analysis.py` derives a plain-language "Security Score" (0-100 +
+letter grade) from the findings, surfaced live in the dashboard's report view. Every dashboard-
+triggered scan also renders a downloadable PDF of the report (the "⬇ PDF" button on the results
+view) -- unlike the CLI, where it's opt-in via `--pdf`.
 
 ## Check a Link (standalone, no scan required)
 

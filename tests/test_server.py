@@ -8,11 +8,19 @@ from reconai.server.events import registry
 
 
 def _wait_for_summary(client: TestClient, run_id: str, timeout: float = 5.0) -> str:
+    # summary.md is written *before* impact analysis, the PDF render, and
+    # manifest.json -- waiting only for it (as this used to) races those,
+    # since a caller checking /manifest or /pdf right after can catch the
+    # worker thread still mid-pipeline. Waiting for the run to be marked
+    # done too (only set at pipeline_end, strictly after all of that) closes
+    # the gap.
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         resp = client.get(f"/runs/{run_id}/summary")
         if resp.status_code == 200:
-            return resp.text
+            runs = client.get("/runs").json()
+            if any(r["run_id"] == run_id and r["done"] for r in runs):
+                return resp.text
         time.sleep(0.05)
     raise AssertionError(f"run {run_id} did not complete within {timeout}s")
 
@@ -246,6 +254,26 @@ def test_manifest_404_for_unknown_run():
 def test_summary_404_for_unknown_run():
     with TestClient(app) as client:
         resp = client.get("/runs/does-not-exist/summary")
+    assert resp.status_code == 404
+
+
+def test_pdf_downloadable_after_scan(tmp_path, monkeypatch):
+    # Every dashboard-triggered scan renders a PDF (unlike the CLI, where
+    # --pdf is opt-in) so the report is downloadable straight from the results view.
+    monkeypatch.chdir(tmp_path)
+    with TestClient(app) as client:
+        resp = client.post("/scan", json={"target": "example.com", "dry_run": True, "authorized": True})
+        run_id = resp.json()["run_id"]
+        _wait_for_summary(client, run_id)
+
+        pdf_resp = client.get(f"/runs/{run_id}/pdf")
+    assert pdf_resp.status_code == 200
+    assert pdf_resp.headers["content-type"] == "application/pdf"
+
+
+def test_pdf_404_for_unknown_run():
+    with TestClient(app) as client:
+        resp = client.get("/runs/does-not-exist/pdf")
     assert resp.status_code == 404
 
 

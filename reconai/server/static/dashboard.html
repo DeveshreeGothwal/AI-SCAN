@@ -259,7 +259,7 @@
   button.launch:active { transform: scale(0.995); }
   button.launch:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  button.ghost {
+  button.ghost, a.ghost {
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-dim);
@@ -270,8 +270,10 @@
     border-radius: 999px;
     cursor: pointer;
     text-transform: uppercase;
+    text-decoration: none;
+    display: inline-block;
   }
-  button.ghost:hover { border-color: var(--accent); color: var(--accent); }
+  button.ghost:hover, a.ghost:hover { border-color: var(--accent); color: var(--accent); }
 
   /* ---- stats strip ---- */
   .stats { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }
@@ -761,6 +763,7 @@
         <div class="r-time" id="reportTime"></div>
       </div>
       <div style="display:flex; gap:8px;">
+        <a class="ghost" id="downloadPdfBtn" download>⬇ PDF</a>
         <button class="ghost" id="backToHistoryBtn">← History</button>
         <button class="ghost" id="newScanBtn">+ New Scan</button>
       </div>
@@ -1045,6 +1048,7 @@ async function viewReport(runId) {
 
   $("reportTarget").textContent = manifest ? manifest.target : "—";
   $("reportTime").textContent = manifest ? new Date(manifest.generated_at).toLocaleString() : "";
+  $("downloadPdfBtn").href = `/runs/${runId}/pdf`;
   $("reportAiText").textContent = aiSummaryData ? (aiSummaryData.ai_summary || "(no summary)") : "(report not available)";
   const skipNotes = aiSummaryData ? (aiSummaryData.skip_notes || []) : [];
   // Each real per-tool skip is recorded as "tool: skipped -- reason." -- match

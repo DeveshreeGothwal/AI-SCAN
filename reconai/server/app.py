@@ -9,10 +9,10 @@ import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -157,6 +157,7 @@ def start_scan(req: ScanRequest) -> JSONResponse:
             gobuster_wordlist=WORDLIST_TIERS[req.wordlist_size],
             proxy=proxy,
             validate_secrets=req.validate_secrets,
+            render_pdf=True,
         )
         try:
             run_pipeline(cfg, on_event=on_event)
@@ -256,6 +257,15 @@ def get_impact(run_id: str) -> JSONResponse:
     data = json.loads(impact_path.read_text())
     data["available"] = True
     return JSONResponse(data)
+
+
+@app.get("/runs/{run_id}/pdf", response_model=None)
+def get_pdf(run_id: str) -> Union[FileResponse, JSONResponse]:
+    run_dir = _run_dir_for(run_id)
+    pdf_path = run_dir / "summary.pdf" if run_dir else None
+    if pdf_path is None or not pdf_path.exists():
+        return JSONResponse({"error": "not ready"}, status_code=404)
+    return FileResponse(pdf_path, media_type="application/pdf", filename=f"reconai-{run_id}.pdf")
 
 
 @app.get("/runs/{run_id}/manifest")
