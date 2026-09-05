@@ -3,7 +3,7 @@ services:
     name: reconai-demo
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /
     envVars:
       # Required -- Ollama isn't viable in this container (no local model

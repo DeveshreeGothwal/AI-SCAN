@@ -370,9 +370,11 @@ not a reinvented Ubuntu/Debian equivalent), and `render.yaml` deploys it as a Re
    be safe to leave a public link to. Don't skip the last two for anything other than a
    locked-down/private Render service.
 
-4. Pick a paid instance type, not the free tier — Render's free web services spin down after 15
-   minutes idle, which reintroduces a cold-start delay on a judge's click and defeats the point of
-   not using a tunnel.
+4. `render.yaml` requests the **free** instance type, so no payment info is needed to deploy.
+   The tradeoff: Render's free web services spin down after 15 minutes idle, so the first request
+   after a gap takes ~30-60s to wake back up before the dashboard responds. If that cold start is
+   a problem for a specific demo moment, switch `plan: free` to `plan: starter` in `render.yaml`
+   (requires a card on file) for an always-on instance.
 5. When you're done: suspend or delete the Render service (or just unset the basic-auth password)
    to kill the link instantly. No lingering cost or exposure.
 
