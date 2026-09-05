@@ -48,6 +48,12 @@ class _BasicAuthMiddleware(BaseHTTPMiddleware):
     exists, let alone trigger a scan from it."""
 
     async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/healthz":
+            # Render's own health check has no way to send credentials -- without this
+            # exemption, a locked-down deployment fails its health check forever and
+            # never goes live, even though the app itself is running fine.
+            return await call_next(request)
+
         expected_user = os.environ.get("DASHBOARD_BASIC_AUTH_USER")
         expected_pass = os.environ.get("DASHBOARD_BASIC_AUTH_PASS")
         if not expected_user or not expected_pass:
@@ -99,6 +105,11 @@ class LinkCheckRequest(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return (_STATIC_DIR / "dashboard.html").read_text()
+
+
+@app.get("/healthz", response_class=PlainTextResponse)
+def healthz() -> str:
+    return "ok"
 
 
 @app.post("/scan")

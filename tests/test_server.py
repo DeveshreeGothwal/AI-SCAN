@@ -363,6 +363,14 @@ def test_basic_auth_accepts_correct_credentials_when_configured(monkeypatch):
     assert resp.status_code == 200
 
 
+def test_healthz_bypasses_basic_auth_when_configured(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_BASIC_AUTH_USER", "judge")
+    monkeypatch.setenv("DASHBOARD_BASIC_AUTH_PASS", "s3cret")
+    with TestClient(app) as client:
+        resp = client.get("/healthz")
+    assert resp.status_code == 200
+
+
 def test_scan_allowlist_is_a_noop_when_env_var_unset(tmp_path, monkeypatch):
     monkeypatch.delenv("ALLOWED_SCAN_TARGETS", raising=False)
     monkeypatch.chdir(tmp_path)
