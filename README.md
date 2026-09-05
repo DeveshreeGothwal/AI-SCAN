@@ -364,11 +364,11 @@ not a reinvented Ubuntu/Debian equivalent), and `render.yaml` deploys it as a Re
      runs on Groq's backend: a hosted API with a genuinely free tier (no card, no spend — sign up
      at [console.groq.com/keys](https://console.groq.com/keys)). Its free-tier rate limit
      (14,400 requests/day) is far more than a demo doing one AI call per completed scan will hit.
-   - **`DASHBOARD_BASIC_AUTH_USER`** / **`DASHBOARD_BASIC_AUTH_PASS`** (strongly recommended) —
-     without these, the dashboard and every real scan it can trigger is reachable by anyone who
-     finds the URL, not just people you've shared it with. Once set, every request needs HTTP
-     Basic Auth (the browser's own login prompt — no extra code to visit). Give judges the
-     link plus this username/password.
+   - **`DASHBOARD_BASIC_AUTH_USER`** / **`DASHBOARD_BASIC_AUTH_PASS`** (optional) — if set, every
+     request needs HTTP Basic Auth (the browser's own login prompt), so only people you've shared
+     the password with can reach the dashboard. Leave both unset (the default) if you have no side
+     channel to hand judges a separate password alongside the link — the allowlist below is what
+     actually caps abuse risk, not this.
    - **`ALLOWED_SCAN_TARGETS`** (strongly recommended, defaults to `scanme.nmap.org` in
      `render.yaml`) — restricts `/scan` to a comma-separated allowlist. Without this, anyone with
      dashboard access could point real scan traffic (port scans, sqlmap, directory brute-forcing)
@@ -377,10 +377,13 @@ not a reinvented Ubuntu/Debian equivalent), and `render.yaml` deploys it as a Re
      official public test target, maintained with blanket permission for exactly this. This
      restriction only applies to `/scan` — the standalone "Check a Link" feature is unaffected,
      since it only ever makes one benign GET + a WHOIS lookup against whatever URL you give it.
+   - **`DISABLED_TOOLS`** (recommended for this 512MB instance, defaults to `github_secrets` in
+     `render.yaml`) — comma-separated tool names to skip entirely. `github_secrets` clones and
+     scans a real GitHub repo per scan, which verified in practice can OOM-crash a 512MB
+     container; disabling it here doesn't affect local/Kali usage.
 
-   None of these three are required for the Docker image to *build* — only for the deployment to
-   be safe to leave a public link to. Don't skip the last two for anything other than a
-   locked-down/private Render service.
+   None of these are required for the Docker image to *build* — only for the deployment to
+   be safe (and stable) to leave a public link to.
 
 4. `render.yaml` requests the **free** instance type, so no payment info is needed to deploy.
    Two tradeoffs come with that:

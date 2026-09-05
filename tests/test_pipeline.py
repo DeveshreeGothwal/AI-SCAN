@@ -119,6 +119,21 @@ def test_httpx_skipped_when_subfinder_finds_no_subdomains(tmp_path, monkeypatch)
     assert "httpx: skipped -- no subdomains discovered." in summary
 
 
+def test_disabled_tools_env_var_skips_named_tool(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISABLED_TOOLS", "github_secrets")
+    from unittest.mock import patch
+    with patch("reconai.tools.base.shutil.which", return_value="/usr/bin/tool"):
+        cfg = Config(target="example.com", mock=True)
+        ctx = run_pipeline(cfg, backend=_stub_backend())
+
+    assert not (ctx.run_dir / "github_secrets.txt").exists()
+    assert any("github_secrets" in note and "disabled for this deployment" in note for note in ctx.skip_notes)
+    # other passive tools must be unaffected
+    assert (ctx.run_dir / "whois.txt").exists()
+    assert (ctx.run_dir / "bucket_enum.txt").exists()
+
+
 def test_apex_domain_tools_receive_registrable_domain_not_literal_target(tmp_path, monkeypatch):
     # Regression: subfinder/crt.sh/theHarvester were being called with the
     # literal scanned hostname (e.g. "www.example.com") -- verified for real

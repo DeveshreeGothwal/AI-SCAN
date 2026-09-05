@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -93,6 +94,17 @@ def _emit(on_event: EventCallback | None, event: dict) -> None:
         on_event(event)
 
 
+def _disabled_tools() -> set[str]:
+    """Opt-in per-tool kill switch for constrained deployments -- e.g. Render's
+    free tier (512MB) can't reliably survive github_secrets cloning+scanning a
+    real repo (verified in practice). Empty by default (nothing disabled)
+    unless DISABLED_TOOLS is set to a comma-separated list of tool names.
+    Only meant for standalone tools -- disabling one whose output another
+    stage reads downstream (subfinder, crtsh) would break that stage."""
+    raw = os.environ.get("DISABLED_TOOLS", "")
+    return {t.strip() for t in raw.split(",") if t.strip()}
+
+
 def _skip(ctx: "RunContext", on_event: EventCallback | None, tool: str, reason: str) -> None:
     # Recorded on ctx (not just emitted live) so a skip reason survives into the
     # persisted summary.md -- otherwise anyone reading the report later has no
@@ -145,7 +157,11 @@ def run_pipeline(cfg: Config, backend: LLMBackend | None = None, on_event: Event
             "the same authorized organization but outside the literal target hostname"
         )
 
+    disabled = _disabled_tools()
     for tool_module in PASSIVE_TOOLS:
+        if tool_module.NAME in disabled:
+            _skip(ctx, on_event, tool_module.NAME, "disabled for this deployment")
+            continue
         _emit(on_event, {"type": "stage_start", "tool": tool_module.NAME})
         tool_target = passive_domain if tool_module in _APEX_DOMAIN_TOOLS else cfg.target
         result = tool_module.run(tool_target, dry_run=cfg.dry_run, mock=cfg.mock, proxy=cfg.proxy)

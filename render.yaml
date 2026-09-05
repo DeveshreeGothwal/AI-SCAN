@@ -28,3 +28,8 @@ services:
       # reconai/server/app.py's _allowed_scan_targets().
       - key: ALLOWED_SCAN_TARGETS
         value: scanme.nmap.org
+      # Recommended for this 512MB instance -- github_secrets clones and scans a
+      # real GitHub repo per scan, which verified in practice can OOM-crash the
+      # container. See reconai/pipeline.py's _disabled_tools().
+      - key: DISABLED_TOOLS
+        value: github_secrets
