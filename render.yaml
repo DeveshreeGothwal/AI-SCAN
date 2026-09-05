@@ -7,8 +7,11 @@ services:
     healthCheckPath: /
     envVars:
       # Required -- Ollama isn't viable in this container (no local model
-      # server, not enough RAM), so the dashboard defaults to Claude.
-      - key: ANTHROPIC_API_KEY
+      # server, not enough RAM) and Claude's API needs a paid credit balance,
+      # so the dashboard defaults to Groq: a hosted API with a genuinely free
+      # tier (no card, no spend) that's plenty for demo-level volume. Get a
+      # key at https://console.groq.com/keys.
+      - key: GROQ_API_KEY
         sync: false
       # Strongly recommended -- without these, the dashboard (and every real
       # scan it can trigger) is reachable by anyone who finds the URL. See

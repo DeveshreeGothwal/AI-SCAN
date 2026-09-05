@@ -273,6 +273,7 @@ def run_pipeline(cfg: Config, backend: LLMBackend | None = None, on_event: Event
                 ollama_model=cfg.ollama_model,
                 ollama_host=cfg.ollama_host,
                 claude_model=cfg.claude_model,
+                groq_model=cfg.groq_model,
             )
 
     summary_md = markdown_report.build(cfg.target, ctx.results, backend, skip_notes=ctx.skip_notes)

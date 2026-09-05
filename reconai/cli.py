@@ -15,11 +15,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         description="AI-assisted recon pipeline for authorized penetration testing / bug bounty work.",
     )
     parser.add_argument("target", nargs="?", help="Domain or IP to scan. Prompted for if omitted.")
-    parser.add_argument("--llm", choices=["ollama", "claude"], default=None,
+    parser.add_argument("--llm", choices=["ollama", "claude", "groq"], default=None,
                          help="AI backend to use for summarization (default: ollama, or $RECON_LLM_BACKEND).")
     parser.add_argument("--ollama-model", default=None, help="Ollama model name (default: llama3.2:3b, or $OLLAMA_MODEL).")
     parser.add_argument("--ollama-host", default=None, help="Ollama host URL (default: http://localhost:11434, or $OLLAMA_HOST).")
     parser.add_argument("--claude-model", default=None, help="Claude model name (default: claude-opus-4-8, or $ANTHROPIC_MODEL).")
+    parser.add_argument("--groq-model", default=None, help="Groq model name (default: llama-3.3-70b-versatile, or $GROQ_MODEL).")
     parser.add_argument("--pdf", action="store_true", help="Also render the summary report as a PDF.")
     parser.add_argument("--dry-run", action="store_true", help="Check tool availability and simulate the run without executing anything.")
     parser.add_argument("--mock", action="store_true", help="Use canned sample tool output instead of real binaries (for dev/testing off Kali).")

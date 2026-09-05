@@ -291,7 +291,7 @@ sudo apt install seclists   # only needed for --wordlist-size large
 
 ### AI backend
 
-Pick one at runtime with `--llm ollama` (default) or `--llm claude`.
+Pick one at runtime with `--llm ollama` (default), `--llm claude`, or `--llm groq`.
 
 **Ollama (local, free, offline)** — recommended default for a Kali VM with limited RAM:
 
@@ -301,10 +301,19 @@ ollama pull llama3.2:3b
 ollama serve &
 ```
 
-**Claude (cloud API, stronger summaries, needs internet + key):**
+**Claude (cloud API, stronger summaries, needs internet + a paid key):**
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**Groq (cloud API, genuinely free tier, no card needed):** get a key at
+[console.groq.com/keys](https://console.groq.com/keys) (email/GitHub/Google sign-in, no billing
+setup), then:
+
+```bash
+export GROQ_API_KEY=gsk_...
+python3 recon.py example.com --llm groq
 ```
 
 ## Usage
@@ -350,8 +359,11 @@ not a reinvented Ubuntu/Debian equivalent), and `render.yaml` deploys it as a Re
    `render.yaml` automatically.
 3. Fill in the env vars Render prompts for (declared with `sync: false` in `render.yaml`, so
    they're entered directly in Render's dashboard, never committed to the repo):
-   - **`ANTHROPIC_API_KEY`** (required) — Ollama isn't viable in a small container (no local model
-     server, not enough RAM), so this deployment runs on the Claude backend.
+   - **`GROQ_API_KEY`** (required) — Ollama isn't viable in a small container (no local model
+     server, not enough RAM), and Claude's API needs a paid credit balance, so this deployment
+     runs on Groq's backend: a hosted API with a genuinely free tier (no card, no spend — sign up
+     at [console.groq.com/keys](https://console.groq.com/keys)). Its free-tier rate limit
+     (14,400 requests/day) is far more than a demo doing one AI call per completed scan will hit.
    - **`DASHBOARD_BASIC_AUTH_USER`** / **`DASHBOARD_BASIC_AUTH_PASS`** (strongly recommended) —
      without these, the dashboard and every real scan it can trigger is reachable by anyone who
      finds the URL, not just people you've shared it with. Once set, every request needs HTTP

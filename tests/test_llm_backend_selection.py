@@ -5,6 +5,7 @@ import pytest
 
 from reconai.llm import factory
 from reconai.llm.claude_backend import ClaudeBackend
+from reconai.llm.groq_backend import GroqBackend
 from reconai.llm.ollama_backend import OllamaBackend
 
 
@@ -16,6 +17,11 @@ def test_factory_returns_ollama_backend():
 def test_factory_returns_claude_backend():
     backend = factory.get_backend("claude")
     assert isinstance(backend, ClaudeBackend)
+
+
+def test_factory_returns_groq_backend():
+    backend = factory.get_backend("groq")
+    assert isinstance(backend, GroqBackend)
 
 
 def test_factory_unknown_backend_raises():
@@ -53,3 +59,39 @@ def test_claude_summarize_extracts_text_block():
 
     result = backend.summarize("summarize this")
     assert result == "narrative summary"
+
+
+def test_groq_summarize_missing_key_raises_clear_message(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    backend = GroqBackend()
+    with pytest.raises(RuntimeError, match="GROQ_API_KEY"):
+        backend.summarize("summarize this")
+
+
+def test_groq_summarize_extracts_response_text(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    backend = GroqBackend()
+    fake_response = MagicMock()
+    fake_response.raise_for_status.return_value = None
+    fake_response.json.return_value = {"choices": [{"message": {"content": "  interesting findings here  "}}]}
+    with patch("reconai.llm.groq_backend.httpx.post", return_value=fake_response):
+        result = backend.summarize("summarize this")
+    assert result == "interesting findings here"
+
+
+def test_groq_summarize_connect_error_raises_clear_message(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    backend = GroqBackend()
+    with patch("reconai.llm.groq_backend.httpx.post", side_effect=httpx.ConnectError("refused")):
+        with pytest.raises(RuntimeError, match="Could not reach the Groq API"):
+            backend.summarize("summarize this")
+
+
+def test_groq_summarize_auth_error_raises_clear_message(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    backend = GroqBackend()
+    fake_request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    fake_response = httpx.Response(401, request=fake_request)
+    with patch("reconai.llm.groq_backend.httpx.post", return_value=fake_response):
+        with pytest.raises(RuntimeError, match="GROQ_API_KEY"):
+            backend.summarize("summarize this")

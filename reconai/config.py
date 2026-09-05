@@ -13,6 +13,7 @@ class Config:
     ollama_model: str | None = None
     ollama_host: str | None = None
     claude_model: str | None = None
+    groq_model: str | None = None
     render_pdf: bool = False
     dry_run: bool = False
     mock: bool = False
@@ -33,6 +34,7 @@ class Config:
             ollama_model=args.ollama_model or os.environ.get("OLLAMA_MODEL"),
             ollama_host=args.ollama_host or os.environ.get("OLLAMA_HOST"),
             claude_model=args.claude_model or os.environ.get("ANTHROPIC_MODEL"),
+            groq_model=args.groq_model or os.environ.get("GROQ_MODEL"),
             render_pdf=args.pdf,
             dry_run=args.dry_run,
             mock=args.mock,

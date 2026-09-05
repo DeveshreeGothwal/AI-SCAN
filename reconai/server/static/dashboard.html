@@ -625,6 +625,7 @@
       <div class="field" style="max-width: 200px;">
         <label>LLM Backend</label>
         <select id="llmBackend">
+          <option value="groq">groq (free api)</option>
           <option value="claude">claude (api)</option>
           <option value="ollama">ollama (local)</option>
         </select>
@@ -1205,7 +1206,7 @@ buildPhases();
     if (active) { attachToRun(active.run_id, active.target, active.started_at * 1000, { reconnecting: true }); return; }
   } catch (e) { /* server has no runs yet, or /runs unreachable -- fall through to idle form */ }
 
-  // Deep-link support: ?target=X&authorized=1&autostart=1[&llm=claude][&proxy=socks5://127.0.0.1:9050][&validate_secrets=1]
+  // Deep-link support: ?target=X&authorized=1&autostart=1[&llm=groq][&proxy=socks5://127.0.0.1:9050][&validate_secrets=1]
   if (p.get("target")) $("target").value = p.get("target");
   if (p.get("authorized") === "1") $("authorized").checked = true;
   if (p.get("llm")) $("llmBackend").value = p.get("llm");
