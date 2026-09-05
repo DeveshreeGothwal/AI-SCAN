@@ -114,7 +114,7 @@ def test_manifest_and_tool_output_available_after_mock_run(tmp_path, monkeypatch
         # waybackurls archive.
         ai_summary = client.get(f"/runs/{run_id}/ai-summary").json()
         assert ai_summary["ai_summary"] == "[DRY-RUN] AI summarization skipped -- no LLM was called."
-        assert ai_summary["skip_note"] is None
+        assert ai_summary["skip_notes"] == []
 
 
 def test_ai_summary_falls_back_to_full_report_for_runs_without_companion_file(tmp_path, monkeypatch):

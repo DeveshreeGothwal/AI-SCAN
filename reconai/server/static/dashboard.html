@@ -1046,7 +1046,19 @@ async function viewReport(runId) {
   $("reportTarget").textContent = manifest ? manifest.target : "—";
   $("reportTime").textContent = manifest ? new Date(manifest.generated_at).toLocaleString() : "";
   $("reportAiText").textContent = aiSummaryData ? (aiSummaryData.ai_summary || "(no summary)") : "(report not available)";
-  const skipNote = aiSummaryData ? aiSummaryData.skip_note : null;
+  const skipNotes = aiSummaryData ? (aiSummaryData.skip_notes || []) : [];
+  // Each real per-tool skip is recorded as "tool: skipped -- reason." -- match
+  // by tool name so an expanded row shows *its own* reason, not just whichever
+  // skip note happens to be first (e.g. the apex-domain FYI note, which isn't
+  // even a real skip and would otherwise drown out every other tool's reason).
+  function skipReasonFor(tool) {
+    const re = new RegExp(`^${tool}: skipped -- (.+)\\.$`);
+    for (const note of skipNotes) {
+      const m = note.match(re);
+      if (m) return m[1];
+    }
+    return null;
+  }
 
   renderScoreCard(impactData);
 
@@ -1060,7 +1072,7 @@ async function viewReport(runId) {
       if (id === "ai_summary") continue;
       const entry = byTool[id];
       const state = toolState(entry);
-      const meta = entry ? `${entry.duration_s}s · exit ${entry.returncode ?? "—"}` : (skipNote || "skipped");
+      const meta = entry ? `${entry.duration_s}s · exit ${entry.returncode ?? "—"}` : (skipReasonFor(id) || "skipped");
       const details = document.createElement("details");
       details.className = `finding s-${state}`;
       details.innerHTML = `
@@ -1076,7 +1088,7 @@ async function viewReport(runId) {
         const body = details.querySelector(".finding-body");
         if (body.dataset.loaded) return;
         body.dataset.loaded = "1";
-        if (!entry) { body.innerHTML = `<div class="loading">skipped — ${skipNote || "condition not met"}</div>`; return; }
+        if (!entry) { body.innerHTML = `<div class="loading">skipped — ${skipReasonFor(id) || "condition not met"}</div>`; return; }
         if (!entry.available) { body.innerHTML = `<div class="loading">unavailable — ${entry.skipped_reason || ""}</div>`; return; }
         const cmdRes = await fetch(`/runs/${runId}/tool/${id}`);
         const text = cmdRes.ok ? await cmdRes.text() : "(no output)";

@@ -47,14 +47,13 @@ def write_tool_output(run_dir: Path, tool_name: str, result: ToolResult) -> Path
 def write_ai_summary(run_dir: Path, ai_summary: str, skip_notes: list[str]) -> Path:
     """Small companion file to summary.md so the dashboard's report view can
     fetch just the narrative summary without downloading the entire
-    (potentially huge) report. skip_notes stores only the first entry,
-    matching the one generic "why is this tool missing" message the
-    dashboard has always shown for any tool absent from the manifest --
-    not a behavior change, just moving where that string comes from."""
+    (potentially huge) report. Stores every skip note (not just the first)
+    so the dashboard can show the specific reason for whichever tool a user
+    expands, rather than one generic message for all of them."""
     path = run_dir / "ai_summary.json"
     path.write_text(json.dumps({
         "ai_summary": ai_summary,
-        "skip_note": skip_notes[0] if skip_notes else None,
+        "skip_notes": skip_notes,
     }, indent=2))
     return path
 

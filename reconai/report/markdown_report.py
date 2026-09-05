@@ -90,19 +90,20 @@ def extract_ai_summary(markdown_text: str) -> str:
     return section.strip()
 
 
-def extract_first_skip_note(markdown_text: str) -> str | None:
-    """Mirrors the dashboard's original client-side extraction: only the
-    first skip note, used as one generic "why is this tool missing" message
-    for any tool absent from the manifest. Only needed as a fallback for
-    reports generated before write_ai_summary() started persisting this
+def extract_skip_notes(markdown_text: str) -> list[str]:
+    """Every skip note, so the dashboard can show the reason for the specific
+    tool a user expands rather than always the first one in the list -- which,
+    whenever the apex domain differs from the exact target hostname, is an
+    unrelated FYI about subfinder/crtsh/etc.'s scoping, not a real skip reason
+    for whatever tool is actually being looked at. Only needed as a fallback
+    for reports generated before write_ai_summary() started persisting this
     directly."""
     start = markdown_text.find("## Raw Findings")
     if start == -1:
-        return None
+        return []
     end = markdown_text.find("### ", start)
     raw = markdown_text[start:end] if end != -1 else markdown_text[start:]
-    match = _SKIP_NOTE_RE.search(raw)
-    return match.group(1) if match else None
+    return _SKIP_NOTE_RE.findall(raw)
 
 
 def build(target: str, results: list[ToolResult], backend: LLMBackend, skip_notes: list[str] | None = None) -> str:

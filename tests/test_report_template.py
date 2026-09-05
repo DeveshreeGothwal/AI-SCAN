@@ -109,20 +109,23 @@ def test_extract_ai_summary_stops_before_impact_analysis_section():
     assert "Confirmed SQL injection" not in extracted
 
 
-def test_extract_first_skip_note_returns_only_the_first():
+def test_extract_skip_notes_returns_all():
     backend = _stub_backend()
     md = markdown_report.build(
         "example.com", _sample_results(), backend,
         skip_notes=["httpx: skipped -- no subdomains discovered.",
                     "subjack: skipped -- no subdomains discovered."],
     )
-    assert markdown_report.extract_first_skip_note(md) == "httpx: skipped -- no subdomains discovered."
+    assert markdown_report.extract_skip_notes(md) == [
+        "httpx: skipped -- no subdomains discovered.",
+        "subjack: skipped -- no subdomains discovered.",
+    ]
 
 
-def test_extract_first_skip_note_returns_none_when_no_skips():
+def test_extract_skip_notes_returns_empty_list_when_no_skips():
     backend = _stub_backend()
     md = markdown_report.build("example.com", _sample_results(), backend, skip_notes=[])
-    assert markdown_report.extract_first_skip_note(md) is None
+    assert markdown_report.extract_skip_notes(md) == []
 
 
 def test_condense_truncates_long_output():

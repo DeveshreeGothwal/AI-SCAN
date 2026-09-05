@@ -69,7 +69,7 @@ def test_write_ai_summary(tmp_path):
     data = json.loads(path.read_text())
     assert data == {
         "ai_summary": "Narrative summary text.",
-        "skip_note": "httpx: skipped -- no subdomains discovered.",
+        "skip_notes": ["httpx: skipped -- no subdomains discovered."],
     }
 
 
@@ -77,7 +77,7 @@ def test_write_ai_summary_with_no_skip_notes(tmp_path):
     path = results.write_ai_summary(tmp_path, "Narrative summary text.", [])
     import json
     data = json.loads(path.read_text())
-    assert data["skip_note"] is None
+    assert data["skip_notes"] == []
 
 
 def test_write_manifest(tmp_path):

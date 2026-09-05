@@ -20,7 +20,7 @@ from starlette.responses import Response
 
 from ..config import Config
 from ..pipeline import STAGE_ORDER, run_pipeline
-from ..report.markdown_report import extract_ai_summary, extract_first_skip_note
+from ..report.markdown_report import extract_ai_summary, extract_skip_notes
 from ..tools import link_safety_tool
 from ..tools.gobuster_tool import WORDLIST_TIERS
 from .events import registry
@@ -241,7 +241,7 @@ def get_ai_summary(run_id: str) -> JSONResponse:
     if not summary_path.exists():
         return JSONResponse({"error": "not ready"}, status_code=404)
     text = summary_path.read_text()
-    return JSONResponse({"ai_summary": extract_ai_summary(text), "skip_note": extract_first_skip_note(text)})
+    return JSONResponse({"ai_summary": extract_ai_summary(text), "skip_notes": extract_skip_notes(text)})
 
 
 @app.get("/runs/{run_id}/impact")
